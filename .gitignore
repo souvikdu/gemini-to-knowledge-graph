@@ -1,0 +1,23 @@
+﻿# Environment
+.env
+
+# Generated databases
+chat_topics.db
+
+# Extracted chat data (contains personal content)
+chats/*.json
+
+# Generated Obsidian vault
+Obsidian_Vault/
+
+# Personal config / state (copy from *.example.json counterparts)
+config/config.json
+config/topics.json
+checkpoint/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/

@@ -1,0 +1,856 @@
+{
+  "description": "Seed taxonomy for chat-level Category/Topic classification. The classifier (classify_chats.py) may add new topics under an existing category when nothing here fits a chat -- this list is a starting vocabulary, not a hard constraint. Re-run a dedupe pass periodically as new minors accumulate.",
+  "categories": [
+    "AI & Machine Learning",
+    "Software Development",
+    "Engineering",
+    "Mathematics",
+    "Physics & Astronomy",
+    "Chemistry & Chemical Compounds",
+    "Biology & Life Sciences",
+    "Health & Medicine",
+    "Psychology & Cognitive Science",
+    "Environment & Climate",
+    "Geography & Places",
+    "History & Culture",
+    "Philosophy & Religion",
+    "Politics & Law",
+    "Finance & Economics",
+    "Companies & Organizations",
+    "Education & Career",
+    "Linguistics & Writing",
+    "Art & Design",
+    "Music & Audio",
+    "Gaming & Entertainment",
+    "Sports & Athletics",
+    "Food & Ingredients",
+    "Lifestyle & Luxury Goods",
+    "General Knowledge"
+  ],
+  "topics": [
+    {
+      "name": "Artificial Intelligence",
+      "category": "AI & Machine Learning"
+    },
+    {
+      "name": "Machine Learning",
+      "category": "AI & Machine Learning"
+    },
+    {
+      "name": "Neural Networks",
+      "category": "AI & Machine Learning"
+    },
+    {
+      "name": "Large Language Models",
+      "category": "AI & Machine Learning"
+    },
+    {
+      "name": "AI Models",
+      "category": "AI & Machine Learning"
+    },
+    {
+      "name": "Data Science",
+      "category": "AI & Machine Learning"
+    },
+    {
+      "name": "Reinforcement Learning",
+      "category": "AI & Machine Learning"
+    },
+    {
+      "name": "On-Premises AI",
+      "category": "AI & Machine Learning"
+    },
+    {
+      "name": "Prompt Engineering",
+      "category": "AI & Machine Learning"
+    },
+    {
+      "name": "Programming",
+      "category": "Software Development"
+    },
+    {
+      "name": "Computer Science",
+      "category": "Software Development"
+    },
+    {
+      "name": "Software Engineering",
+      "category": "Software Development"
+    },
+    {
+      "name": "Web Development",
+      "category": "Software Development"
+    },
+    {
+      "name": "DevOps",
+      "category": "Software Development"
+    },
+    {
+      "name": "System Design",
+      "category": "Software Development"
+    },
+    {
+      "name": "Data Analysis",
+      "category": "Software Development"
+    },
+    {
+      "name": "Data Visualization",
+      "category": "Software Development"
+    },
+    {
+      "name": "Operating Systems",
+      "category": "Software Development"
+    },
+    {
+      "name": "Cybersecurity",
+      "category": "Software Development"
+    },
+    {
+      "name": "Cryptography",
+      "category": "Software Development"
+    },
+    {
+      "name": "Cloud Computing",
+      "category": "Software Development"
+    },
+    {
+      "name": "Networking",
+      "category": "Software Development"
+    },
+    {
+      "name": "Social Media",
+      "category": "Software Development"
+    },
+    {
+      "name": "Competitive Programming",
+      "category": "Software Development"
+    },
+    {
+      "name": "Mechanical Engineering",
+      "category": "Engineering"
+    },
+    {
+      "name": "Electrical Engineering",
+      "category": "Engineering"
+    },
+    {
+      "name": "Electronics",
+      "category": "Engineering"
+    },
+    {
+      "name": "Robotics",
+      "category": "Engineering"
+    },
+    {
+      "name": "Aerospace Engineering",
+      "category": "Engineering"
+    },
+    {
+      "name": "Automotive Engineering",
+      "category": "Engineering"
+    },
+    {
+      "name": "Materials Science",
+      "category": "Engineering"
+    },
+    {
+      "name": "Energy Systems",
+      "category": "Engineering"
+    },
+    {
+      "name": "HVAC",
+      "category": "Engineering"
+    },
+    {
+      "name": "Optics",
+      "category": "Engineering"
+    },
+    {
+      "name": "Fluid Dynamics",
+      "category": "Engineering"
+    },
+    {
+      "name": "Logistics",
+      "category": "Engineering"
+    },
+    {
+      "name": "Display Technology",
+      "category": "Engineering"
+    },
+    {
+      "name": "Consumer Electronics",
+      "category": "Engineering"
+    },
+    {
+      "name": "Algebra",
+      "category": "Mathematics"
+    },
+    {
+      "name": "Calculus",
+      "category": "Mathematics"
+    },
+    {
+      "name": "Geometry",
+      "category": "Mathematics"
+    },
+    {
+      "name": "Statistics",
+      "category": "Mathematics"
+    },
+    {
+      "name": "Number Theory",
+      "category": "Mathematics"
+    },
+    {
+      "name": "Combinatorics",
+      "category": "Mathematics"
+    },
+    {
+      "name": "Graph Theory",
+      "category": "Mathematics"
+    },
+    {
+      "name": "Logic",
+      "category": "Mathematics"
+    },
+    {
+      "name": "Set Theory",
+      "category": "Mathematics"
+    },
+    {
+      "name": "Foundations of Mathematics",
+      "category": "Mathematics"
+    },
+    {
+      "name": "Classical Mechanics",
+      "category": "Physics & Astronomy"
+    },
+    {
+      "name": "Electromagnetism",
+      "category": "Physics & Astronomy"
+    },
+    {
+      "name": "Thermodynamics",
+      "category": "Physics & Astronomy"
+    },
+    {
+      "name": "Quantum Mechanics",
+      "category": "Physics & Astronomy"
+    },
+    {
+      "name": "Particle Physics",
+      "category": "Physics & Astronomy"
+    },
+    {
+      "name": "Nuclear Physics",
+      "category": "Physics & Astronomy"
+    },
+    {
+      "name": "General Relativity",
+      "category": "Physics & Astronomy"
+    },
+    {
+      "name": "Theoretical Physics",
+      "category": "Physics & Astronomy"
+    },
+    {
+      "name": "Astrophysics",
+      "category": "Physics & Astronomy"
+    },
+    {
+      "name": "Cosmology",
+      "category": "Physics & Astronomy"
+    },
+    {
+      "name": "Planetary Science",
+      "category": "Physics & Astronomy"
+    },
+    {
+      "name": "Stellar Physics",
+      "category": "Physics & Astronomy"
+    },
+    {
+      "name": "Organic Chemistry",
+      "category": "Chemistry & Chemical Compounds"
+    },
+    {
+      "name": "Inorganic Chemistry",
+      "category": "Chemistry & Chemical Compounds"
+    },
+    {
+      "name": "Physical Chemistry",
+      "category": "Chemistry & Chemical Compounds"
+    },
+    {
+      "name": "Elements & Periodic Table",
+      "category": "Chemistry & Chemical Compounds"
+    },
+    {
+      "name": "Chemical Reactions",
+      "category": "Chemistry & Chemical Compounds"
+    },
+    {
+      "name": "Genetics",
+      "category": "Biology & Life Sciences"
+    },
+    {
+      "name": "Evolutionary Biology",
+      "category": "Biology & Life Sciences"
+    },
+    {
+      "name": "Cell Biology",
+      "category": "Biology & Life Sciences"
+    },
+    {
+      "name": "Molecular Biology",
+      "category": "Biology & Life Sciences"
+    },
+    {
+      "name": "Microbiology",
+      "category": "Biology & Life Sciences"
+    },
+    {
+      "name": "Botany",
+      "category": "Biology & Life Sciences"
+    },
+    {
+      "name": "Zoology",
+      "category": "Biology & Life Sciences"
+    },
+    {
+      "name": "Ecology",
+      "category": "Biology & Life Sciences"
+    },
+    {
+      "name": "Physiology",
+      "category": "Biology & Life Sciences"
+    },
+    {
+      "name": "Neurobiology",
+      "category": "Biology & Life Sciences"
+    },
+    {
+      "name": "Biochemistry",
+      "category": "Biology & Life Sciences"
+    },
+    {
+      "name": "Animal Behavior",
+      "category": "Biology & Life Sciences"
+    },
+    {
+      "name": "Anatomy",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Diseases & Conditions",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Pharmacology",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Public Health",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Epidemiology",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Neurology",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Cardiology",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Endocrinology",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Dermatology",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Dentistry",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Ophthalmology & Optometry",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Surgery",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Vaccines & Immunology",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Food Safety",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Alternative Medicine",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Cognitive Science",
+      "category": "Psychology & Cognitive Science"
+    },
+    {
+      "name": "Neuroscience",
+      "category": "Psychology & Cognitive Science"
+    },
+    {
+      "name": "Behavioral Science",
+      "category": "Psychology & Cognitive Science"
+    },
+    {
+      "name": "Cognitive Biases",
+      "category": "Psychology & Cognitive Science"
+    },
+    {
+      "name": "Developmental Psychology",
+      "category": "Psychology & Cognitive Science"
+    },
+    {
+      "name": "Clinical Psychology",
+      "category": "Psychology & Cognitive Science"
+    },
+    {
+      "name": "Climate Change",
+      "category": "Environment & Climate"
+    },
+    {
+      "name": "Conservation & Biodiversity",
+      "category": "Environment & Climate"
+    },
+    {
+      "name": "Geology",
+      "category": "Environment & Climate"
+    },
+    {
+      "name": "Natural Disasters",
+      "category": "Environment & Climate"
+    },
+    {
+      "name": "Renewable Energy",
+      "category": "Environment & Climate"
+    },
+    {
+      "name": "Countries",
+      "category": "Geography & Places"
+    },
+    {
+      "name": "Cities",
+      "category": "Geography & Places"
+    },
+    {
+      "name": "Landmarks",
+      "category": "Geography & Places"
+    },
+    {
+      "name": "Maps & Cartography",
+      "category": "Geography & Places"
+    },
+    {
+      "name": "Travel & Trip Planning",
+      "category": "Geography & Places"
+    },
+    {
+      "name": "Historical Events",
+      "category": "History & Culture"
+    },
+    {
+      "name": "Anthropology",
+      "category": "History & Culture"
+    },
+    {
+      "name": "Notable Scientists & Inventors",
+      "category": "History & Culture"
+    },
+    {
+      "name": "Cultural Traditions",
+      "category": "History & Culture"
+    },
+    {
+      "name": "Ancient Civilizations",
+      "category": "History & Culture"
+    },
+    {
+      "name": "Ethics",
+      "category": "Philosophy & Religion"
+    },
+    {
+      "name": "Epistemology",
+      "category": "Philosophy & Religion"
+    },
+    {
+      "name": "Metaphysics",
+      "category": "Philosophy & Religion"
+    },
+    {
+      "name": "Existentialism",
+      "category": "Philosophy & Religion"
+    },
+    {
+      "name": "Philosophy of Mind",
+      "category": "Philosophy & Religion"
+    },
+    {
+      "name": "Philosophy of Science",
+      "category": "Philosophy & Religion"
+    },
+    {
+      "name": "Religion & Theology",
+      "category": "Philosophy & Religion"
+    },
+    {
+      "name": "Politics & Governance",
+      "category": "Politics & Law"
+    },
+    {
+      "name": "International Relations",
+      "category": "Politics & Law"
+    },
+    {
+      "name": "Law & Legal Systems",
+      "category": "Politics & Law"
+    },
+    {
+      "name": "Crime & Justice",
+      "category": "Politics & Law"
+    },
+    {
+      "name": "Regulatory Compliance",
+      "category": "Politics & Law"
+    },
+    {
+      "name": "Military & Defense",
+      "category": "Politics & Law"
+    },
+    {
+      "name": "Weapons Technology",
+      "category": "Politics & Law"
+    },
+    {
+      "name": "Economic Theory",
+      "category": "Finance & Economics"
+    },
+    {
+      "name": "Financial Markets",
+      "category": "Finance & Economics"
+    },
+    {
+      "name": "Banking",
+      "category": "Finance & Economics"
+    },
+    {
+      "name": "Personal Finance",
+      "category": "Finance & Economics"
+    },
+    {
+      "name": "Risk Management",
+      "category": "Finance & Economics"
+    },
+    {
+      "name": "Venture Capital",
+      "category": "Finance & Economics"
+    },
+    {
+      "name": "Demographics",
+      "category": "Finance & Economics"
+    },
+    {
+      "name": "Business Strategy",
+      "category": "Companies & Organizations"
+    },
+    {
+      "name": "Startups",
+      "category": "Companies & Organizations"
+    },
+    {
+      "name": "Corporate Case Studies",
+      "category": "Companies & Organizations"
+    },
+    {
+      "name": "Nonprofits & NGOs",
+      "category": "Companies & Organizations"
+    },
+    {
+      "name": "Career Development",
+      "category": "Education & Career"
+    },
+    {
+      "name": "Education & Learning",
+      "category": "Education & Career"
+    },
+    {
+      "name": "Higher Education",
+      "category": "Education & Career"
+    },
+    {
+      "name": "Linguistics",
+      "category": "Linguistics & Writing"
+    },
+    {
+      "name": "Writing & Composition",
+      "category": "Linguistics & Writing"
+    },
+    {
+      "name": "Communication Skills",
+      "category": "Linguistics & Writing"
+    },
+    {
+      "name": "Etymology",
+      "category": "Linguistics & Writing"
+    },
+    {
+      "name": "Translation",
+      "category": "Linguistics & Writing"
+    },
+    {
+      "name": "Visual Arts",
+      "category": "Art & Design"
+    },
+    {
+      "name": "Architecture",
+      "category": "Art & Design"
+    },
+    {
+      "name": "Graphic Design",
+      "category": "Art & Design"
+    },
+    {
+      "name": "Fashion",
+      "category": "Art & Design"
+    },
+    {
+      "name": "Literature & Fiction",
+      "category": "Art & Design"
+    },
+    {
+      "name": "Music Theory",
+      "category": "Music & Audio"
+    },
+    {
+      "name": "Musical Instruments",
+      "category": "Music & Audio"
+    },
+    {
+      "name": "Audio Engineering",
+      "category": "Music & Audio"
+    },
+    {
+      "name": "Music History",
+      "category": "Music & Audio"
+    },
+    {
+      "name": "Video Games",
+      "category": "Gaming & Entertainment"
+    },
+    {
+      "name": "Game Design",
+      "category": "Gaming & Entertainment"
+    },
+    {
+      "name": "Anime",
+      "category": "Gaming & Entertainment"
+    },
+    {
+      "name": "Manga",
+      "category": "Gaming & Entertainment"
+    },
+    {
+      "name": "Film & TV",
+      "category": "Gaming & Entertainment"
+    },
+    {
+      "name": "Streaming & Media",
+      "category": "Gaming & Entertainment"
+    },
+    {
+      "name": "Sports",
+      "category": "Sports & Athletics"
+    },
+    {
+      "name": "Exercise & Fitness",
+      "category": "Sports & Athletics"
+    },
+    {
+      "name": "Athletic Training",
+      "category": "Sports & Athletics"
+    },
+    {
+      "name": "Sports Analytics",
+      "category": "Sports & Athletics"
+    },
+    {
+      "name": "Recipes & Cooking",
+      "category": "Food & Ingredients"
+    },
+    {
+      "name": "Cuisine",
+      "category": "Food & Ingredients"
+    },
+    {
+      "name": "Nutrition & Dietetics",
+      "category": "Food & Ingredients"
+    },
+    {
+      "name": "Food Science",
+      "category": "Food & Ingredients"
+    },
+    {
+      "name": "Beverages",
+      "category": "Food & Ingredients"
+    },
+    {
+      "name": "Spices & Seasonings",
+      "category": "Food & Ingredients"
+    },
+    {
+      "name": "Home & Furniture",
+      "category": "Lifestyle & Luxury Goods"
+    },
+    {
+      "name": "Household Items",
+      "category": "Lifestyle & Luxury Goods"
+    },
+    {
+      "name": "Watches",
+      "category": "Lifestyle & Luxury Goods"
+    },
+    {
+      "name": "Luxury Goods",
+      "category": "Lifestyle & Luxury Goods"
+    },
+    {
+      "name": "Miscellaneous",
+      "category": "General Knowledge"
+    },
+    {
+      "name": "Astronomy",
+      "category": "Physics & Astronomy"
+    },
+    {
+      "name": "Earth Science",
+      "category": "Environment & Climate"
+    },
+    {
+      "name": "Sociology",
+      "category": "History & Culture"
+    },
+    {
+      "name": "Accessibility",
+      "category": "Software Development"
+    },
+    {
+      "name": "Hardware & Peripherals",
+      "category": "Engineering"
+    },
+    {
+      "name": "Mobile Operating Systems",
+      "category": "Software Development"
+    },
+    {
+      "name": "Game Theory",
+      "category": "Mathematics"
+    },
+    {
+      "name": "Self-Improvement",
+      "category": "Education & Career"
+    },
+    {
+      "name": "Biomechanics",
+      "category": "Biology & Life Sciences"
+    },
+    {
+      "name": "Generative AI",
+      "category": "AI & Machine Learning"
+    },
+    {
+      "name": "Model Optimization",
+      "category": "AI & Machine Learning"
+    },
+    {
+      "name": "Probability",
+      "category": "Mathematics"
+    },
+    {
+      "name": "Physics",
+      "category": "Physics & Astronomy"
+    },
+    {
+      "name": "Radiation",
+      "category": "Physics & Astronomy"
+    },
+    {
+      "name": "Atomic Structure",
+      "category": "Physics & Astronomy"
+    },
+    {
+      "name": "Chemistry",
+      "category": "Chemistry & Chemical Compounds"
+    },
+    {
+      "name": "Toxicology",
+      "category": "Chemistry & Chemical Compounds"
+    },
+    {
+      "name": "Heat Transfer",
+      "category": "Engineering"
+    },
+    {
+      "name": "Aerodynamics",
+      "category": "Engineering"
+    },
+    {
+      "name": "Biology",
+      "category": "Biology & Life Sciences"
+    },
+    {
+      "name": "Marine Biology",
+      "category": "Biology & Life Sciences"
+    },
+    {
+      "name": "General Health",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Hydration & Electrolyte Balance",
+      "category": "Health & Medicine"
+    },
+    {
+      "name": "Sleep & Circadian Rhythms",
+      "category": "Psychology & Cognitive Science"
+    },
+    {
+      "name": "Perception & Senses",
+      "category": "Psychology & Cognitive Science"
+    },
+    {
+      "name": "Environmental Science",
+      "category": "Environment & Climate"
+    },
+    {
+      "name": "Water Resources",
+      "category": "Environment & Climate"
+    },
+    {
+      "name": "Currency & Exchange Rates",
+      "category": "Finance & Economics"
+    },
+    {
+      "name": "Board & Strategy Games",
+      "category": "Gaming & Entertainment"
+    },
+    {
+      "name": "Lifestyle",
+      "category": "Lifestyle & Luxury Goods"
+    }
+  ]
+}

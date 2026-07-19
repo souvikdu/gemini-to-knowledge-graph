@@ -1,0 +1,55 @@
+{
+  "display_names": {
+    "user": "",
+    "assistant": ""
+  },
+  "api": {
+    "url": "http://localhost:8080/v1/chat/completions",
+    "model": "gemma4",
+    "temperature": 0.05,
+    "max_output_tokens": 350,
+    "timeout": 300,
+    "context_window_tokens": 24000,
+    "safety_margin_tokens": 500
+  },
+  "limits": {
+    "max_retries": 3,
+    "max_turn_chars": 2000,
+    "truncate_head_fraction": 0.65,
+    "max_prune_ratio": 0.3
+  },
+  "paths": {
+    "chats_dir": "chats",
+    "topics_file": "config/topics.json",
+    "classifications_db": "chat_topics.db",
+    "vault_dir": "Obsidian_Vault",
+    "prompt_file": "config/prompts/classifier.md",
+    "extraction_state_file": "checkpoint/extraction_state_gemini.json"
+  },
+  "node_sizing": {
+    "conversation": 8,
+    "topic": { "floor": 25, "ceiling": 60 },
+    "category": { "floor": 72, "ceiling": 100 }
+  },
+  "obsidian": {
+    "nodeSizeMultiplier": 1,
+    "lineSizeMultiplier": 0.3,
+    "repelStrength": 10,
+    "linkStrength": 1,
+    "linkDistance": 250,
+    "centerStrength": 0.518,
+    "scale": 1,
+    "textFadeMultiplier": 0,
+    "search_url": "https://www.google.com/search?q=",
+    "sorting": {
+      "property": "updated",
+      "direction": "desc"
+    },
+    "colors": {
+      "conversation": { "a": 1, "rgb": 9741240 },
+      "topic": { "a": 1, "rgb": 440020 },
+      "category": { "a": 1, "rgb": 11032055 },
+      "unclassified": { "a": 1, "rgb": 4674921 }
+    }
+  }
+}
