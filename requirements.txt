@@ -4,4 +4,4 @@ python-dotenv>=1.0.0
 
 # Gemini chat extraction
 gemini_webapi>=0.3.9
-orjson>=3.9.0
+orjson>=3.11.9
