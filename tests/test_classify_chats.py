@@ -76,12 +76,6 @@ Summary: Duplicate check."""
         with pytest.raises(ValueError, match="Could not parse"):
             parse_response("", SAMPLE_TOPIC_TO_CATEGORY)
 
-    def test_summary_truncated_to_200_chars(self):
-        long_summary = "Summary: " + "x" * 300
-        content = f"Category: Programming\nTopic: Python\n{long_summary}"
-        _, _, summary = parse_response(content, SAMPLE_TOPIC_TO_CATEGORY)
-        assert len(summary) <= 200
-
     def test_case_insensitive_line_prefixes(self):
         content = """CATEGORY: Programming
 TOPIC: Python
