@@ -170,6 +170,24 @@ def _prepare_vault(cfg, force):
     category_dir = os.path.join(vault_dir, "Concepts", "Categories")
     topic_dir = os.path.join(vault_dir, "Concepts", "Topics")
 
+    # Validate all inputs BEFORE touching the filesystem,
+    # so --force never destroys a vault for nothing.
+    categories, _, topic_to_category, topic_canonical_case = load_topics(cfg)
+    known_categories_lower = {c.lower(): c for c in categories}
+
+    conn = get_db_connection(cfg)
+    sync_chats_to_db(conn, chats_dir)
+    chat_topics = load_all_classifications(conn)
+    if not chat_topics:
+        log("No classifications found. Run classify_chats.py first.")
+        conn.close()
+        return None
+
+    if not os.path.isdir(chats_dir):
+        log(f"Missing {chats_dir}/")
+        conn.close()
+        return None
+
     if force:
         import shutil
         for d in (convos_dir, category_dir, topic_dir):
@@ -190,22 +208,6 @@ def _prepare_vault(cfg, force):
         "search_url",
         "https://duckduckgo.com/?q=",
     )
-
-    categories, _, topic_to_category, topic_canonical_case = load_topics(cfg)
-    known_categories_lower = {c.lower(): c for c in categories}
-
-    conn = get_db_connection(cfg)
-    sync_chats_to_db(conn, chats_dir)
-    chat_topics = load_all_classifications(conn)
-    if not chat_topics:
-        log("No classifications found. Run classify_chats.py first.")
-        conn.close()
-        return None
-
-    if not os.path.isdir(chats_dir):
-        log(f"Missing {chats_dir}/")
-        conn.close()
-        return None
 
     existing_vault = {} if force else load_existing_vault_state(convos_dir)
     if existing_vault:

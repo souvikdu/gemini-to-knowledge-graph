@@ -6,6 +6,17 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-21
+
+### Fixed
+
+- **`--force` no longer destroys vault before validation fails** (`obsidian_layout.py`). Running `obsidian_layout.py --force` with a broken config (missing `topics.json`, missing classifications, wrong `chats_dir`) previously deleted the vault first and then failed. Now validation runs first — the vault is untouched if the rebuild would fail.
+- **Prune cascade is now atomic** (`prune_chats.py`). The three-step deletion (classifications → chats table → ignore list) was split across three separate commits. If the process was killed mid-sequence, remaining orphan records could become undiscoverable on retry. The steps are now wrapped in a single transaction — all three succeed together or none do.
+
+### Added
+
+- **`commit=False` parameter** on `delete_classifications()` and `add_ignored_conversations()` in `common.py`, enabling callers to manage their own transactions.
+
 ## [1.0.0] - 2026-07-20
 
 Initial release.

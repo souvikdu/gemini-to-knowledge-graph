@@ -387,8 +387,12 @@ def load_all_classifications(conn) -> dict:
     return out
 
 
-def delete_classifications(conn, cids: list) -> int:
-    """Delete by conversation_id. Returns count actually deleted."""
+def delete_classifications(conn, cids: list, commit: bool = True) -> int:
+    """Delete by conversation_id. Returns count actually deleted.
+
+    *commit* controls whether the change is committed immediately.
+    Pass ``commit=False`` when the caller manages its own transaction.
+    """
     if not cids:
         return 0
     placeholders = ",".join("?" * len(cids))
@@ -396,7 +400,8 @@ def delete_classifications(conn, cids: list) -> int:
         f"DELETE FROM classifications WHERE conversation_id IN ({placeholders})",
         cids,
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return cur.rowcount
 
 
@@ -532,9 +537,13 @@ def sync_chats_to_db(conn, chats_dir):
 # ── Ignored conversations (replaces the old ignore_conversation in JSON) ────
 
 
-def add_ignored_conversations(conn, cids: list, reason: str = "pruned-orphan"):
+def add_ignored_conversations(conn, cids: list, reason: str = "pruned-orphan", commit: bool = True):
     """Idempotent — re-ignoring an already-ignored cid just refreshes
-    reason/timestamp."""
+    reason/timestamp.
+
+    *commit* controls whether the change is committed immediately.
+    Pass ``commit=False`` when the caller manages its own transaction.
+    """
     now = datetime.now(timezone.utc).isoformat()
     conn.executemany(
         """INSERT INTO ignored_conversations (conversation_id, reason, ignored_at)
@@ -543,7 +552,8 @@ def add_ignored_conversations(conn, cids: list, reason: str = "pruned-orphan"):
                reason=excluded.reason, ignored_at=excluded.ignored_at""",
         [(cid, reason, now) for cid in cids],
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def load_ignored_conversations(conn) -> set:

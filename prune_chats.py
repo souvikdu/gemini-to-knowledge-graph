@@ -60,22 +60,28 @@ def _do_prune(orphans, *, conn, cfg, **kwargs):
     2. Delete from ``chats``
     3. Add to ``ignored_conversations``
     4. Delete stale vault notes
+
+    Steps 1-3 are wrapped in a single transaction: if the process is
+    killed mid-sequence the database is rolled back to its pre-prune
+    state, preventing orphan records that would be undiscoverable on
+    retry.
     """
-    # 1. Classifications
-    deleted_cls = delete_classifications(conn, list(orphans))
-    if deleted_cls:
-        log(f"Deleted {deleted_cls} orphaned classification(s) from DB.")
+    # Steps 1-3 in a single transaction
+    with conn:
+        # 1. Classifications
+        deleted_cls = delete_classifications(conn, list(orphans), commit=False)
+        if deleted_cls:
+            log(f"Deleted {deleted_cls} orphaned classification(s) from DB.")
 
-    # 2. Chats table
-    placeholders = ",".join("?" * len(orphans))
-    conn.execute(
-        f"DELETE FROM chats WHERE conversation_id IN ({placeholders})",
-        list(orphans),
-    )
-    conn.commit()
+        # 2. Chats table
+        placeholders = ",".join("?" * len(orphans))
+        conn.execute(
+            f"DELETE FROM chats WHERE conversation_id IN ({placeholders})",
+            list(orphans),
+        )
 
-    # 3. Ignore list (so the extractor never re-fetches these)
-    add_ignored_conversations(conn, list(orphans), reason="deleted-by-user")
+        # 3. Ignore list (so the extractor never re-fetches these)
+        add_ignored_conversations(conn, list(orphans), reason="deleted-by-user", commit=False)
 
     # 4. Vault notes — build state ONCE, not per orphan
     vault_dir = cfg["paths"].get("vault_dir")
