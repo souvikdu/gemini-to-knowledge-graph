@@ -6,16 +6,15 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [1.0.1] - 2026-07-21
-
 ### Fixed
 
-- **`--force` no longer destroys vault before validation fails** (`obsidian_layout.py`). Running `obsidian_layout.py --force` with a broken config (missing `topics.json`, missing classifications, wrong `chats_dir`) previously deleted the vault first and then failed. Now validation runs first — the vault is untouched if the rebuild would fail.
-- **Prune cascade is now atomic** (`prune_chats.py`). The three-step deletion (classifications → chats table → ignore list) was split across three separate commits. If the process was killed mid-sequence, remaining orphan records could become undiscoverable on retry. The steps are now wrapped in a single transaction — all three succeed together or none do.
+- **`prune_chats.py` log message pointed at wrong path** (`prune_chats.py`). The `--unignore` log output referenced `last_timestamp` instead of the actual field `last_timestamp_regular`, and `config/extraction_state_gemini.json` instead of the actual path `checkpoint/extraction_state_gemini.json`.
+- **`README.md` overclaimed on `--unignore` re-download guarantee** (`README.md`). The troubleshooting table and flag documentation stated re-download happens unconditionally on next extraction; now correctly reflects that it depends on the chat's timestamp passing the current checkpoint.
 
-### Added
+### Changed
 
-- **`commit=False` parameter** on `delete_classifications()` and `add_ignored_conversations()` in `common.py`, enabling callers to manage their own transactions.
+- **`obsidian_layout.py` no longer requires classifications to run** (`obsidian_layout.py`). Previously the vault builder hard-exited with "No classifications found" when `classifications` table was empty. Now it proceeds and writes every conversation as an unclassified markdown note with full text, frontmatter, and source tags. Users can run Stage 1 + Stage 3 without an LLM, then add `classify_chats.py` later to build the graph hierarchy.
+- **Truncation reframed as a deliberate trade-off** (`README.md`). The "known limitation" wording around chat-splitting is replaced with a description of why the ~350-token summary doesn't need the full transcript, and a note that the full conversation text is preserved untouched in the vault note regardless of truncation during classification.
 
 ## [1.0.0] - 2026-07-20
 
