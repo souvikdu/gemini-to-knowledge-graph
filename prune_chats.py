@@ -127,8 +127,8 @@ def unignore(conn, cids):
         log("  The conversation will reappear only via:")
         log("    (a) a new message on Gemini's side (bumps its timestamp past")
         log("        the current checkpoint), or")
-        log("    (b) manually resetting last_timestamp to 0 in")
-        log("        config/extraction_state_gemini.json to force a full re-scan.")
+        log("    (b) manually resetting last_timestamp_regular to 0 in")
+        log("        checkpoint/extraction_state_gemini.json to force a full re-scan.")
     else:
         log("None of the specified IDs were in the ignore list — nothing to do.")
 
