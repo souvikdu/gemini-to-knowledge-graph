@@ -179,9 +179,8 @@ def _prepare_vault(cfg, force):
     sync_chats_to_db(conn, chats_dir)
     chat_topics = load_all_classifications(conn)
     if not chat_topics:
-        log("No classifications found. Run classify_chats.py first.")
-        conn.close()
-        return None
+        log("No classifications yet — conversations will be written without category/topic links.")
+        log("  Run classify_chats.py later to add the graph hierarchy.")
 
     if not os.path.isdir(chats_dir):
         log(f"Missing {chats_dir}/")
@@ -620,6 +619,7 @@ def _print_summary(ctx, acc):
     vault_dir = ctx["vault_dir"]
     categories = ctx["categories"]
     category_to_topics = acc["category_to_topics"]
+    has_hierarchy = bool(acc["topic_to_chats"])
     total_in_vault = len(acc["cid_to_notename"])
     print(f"""
 {'='*55}
@@ -634,7 +634,11 @@ Obsidian Vault Updated
   Categories:     {sum(1 for c in categories if category_to_topics.get(c))} notes
 {'='*55}
 Open '{vault_dir}' as a vault in Obsidian.
-Graph hierarchy: Category → Topic → Conversation (chats never link directly to categories)""")
+""")
+    if has_hierarchy:
+        print("Graph hierarchy: Category → Topic → Conversation (chats never link directly to categories)")
+    else:
+        print("Run classify_chats.py to add the category/topic hierarchy.")
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
