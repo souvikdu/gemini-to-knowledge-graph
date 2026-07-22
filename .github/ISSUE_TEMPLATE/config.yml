@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Usage questions & discussion
+    url: https://github.com/souvikdu/gemini-to-knowledge-graph/discussions
+    about: Please ask and answer questions about using the project here.
