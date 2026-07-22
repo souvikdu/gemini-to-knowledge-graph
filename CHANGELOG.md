@@ -4,10 +4,11 @@ All notable changes to this project are documented in this file. Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/);
 versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.2] - 2026-07-22
 
 ### Fixed
 
+- **Hub-note filename collision across classified chats** (`obsidian_layout.py`, `common.py`). Two distinct topic names (e.g. "Data Science" vs "Data science") that produce the same `make_safe_filename()` output would silently overwrite each other's hub-note. Added a global pre-pass `build_topic_filename_map()` that scans all classified chats after DB load, groups topics by safe filename, and picks the alphabetically-first spelling for colliding groups. Non-destructive — no DB writes or schema changes. ([#12](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/12))
 - **`prune_chats.py` log message pointed at wrong path** (`prune_chats.py`). The `--unignore` log output referenced `last_timestamp` instead of the actual field `last_timestamp_regular`, and `config/extraction_state_gemini.json` instead of the actual path `checkpoint/extraction_state_gemini.json`.
 - **`README.md` overclaimed on `--unignore` re-download guarantee** (`README.md`). The troubleshooting table and flag documentation stated re-download happens unconditionally on next extraction; now correctly reflects that it depends on the chat's timestamp passing the current checkpoint.
 
@@ -15,6 +16,11 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 - **`obsidian_layout.py` no longer requires classifications to run** (`obsidian_layout.py`). Previously the vault builder hard-exited with "No classifications found" when `classifications` table was empty. Now it proceeds and writes every conversation as an unclassified markdown note with full text, frontmatter, and source tags. Users can run Stage 1 + Stage 3 without an LLM, then add `classify_chats.py` later to build the graph hierarchy.
 - **Truncation reframed as a deliberate trade-off** (`README.md`). The "known limitation" wording around chat-splitting is replaced with a description of why the ~350-token summary doesn't need the full transcript, and a note that the full conversation text is preserved untouched in the vault note regardless of truncation during classification.
+
+### Added
+
+- **Category seed collision check** (`obsidian_layout.py`). `_prepare_vault()` now dies early with a clear error if two categories in `config/topics.json` produce the same safe filename (not auto-resolvable since categories are static config).
+- **`build_topic_filename_map()` tests** (`tests/test_obsidian_layout.py`). 7 tests covering no collisions, case-only collisions, safe-char stripping collisions, multiple groups, category-name exclusion, error-status skipping, and empty input.
 
 ## [1.0.0] - 2026-07-20
 
