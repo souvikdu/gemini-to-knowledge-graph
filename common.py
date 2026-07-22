@@ -193,6 +193,18 @@ def load_topics(cfg):
     return categories, topics_by_category, topic_to_category, topic_canonical_case
 
 
+def make_safe_filename(name):
+    # Replace newlines/tabs with spaces first, then strip control characters
+    safe = name.replace("\r\n", " ").replace("\n", " ").replace("\r", " ").replace("\t", " ")
+    safe = "".join(c for c in safe if c not in r'<>:"/\\|?*' and ord(c) >= 32)
+    safe = safe.strip().rstrip(".")
+    if not safe:
+        safe = "unnamed"
+    if len(safe) > 150:
+        safe = safe[:150].rstrip()
+    return safe
+
+
 def canonicalize_topic(name, topic_canonical_case):
     """Fold case/whitespace variants of a known topic back to one canonical
     spelling, so 'prompt engineering' and 'Prompt Engineering' land on the
