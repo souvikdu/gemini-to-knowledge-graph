@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/);
 versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **README restructured for clarity** (`README.md`). Reorganized the
+  document into a logical flow that mirrors the actual pipeline stages
+  (Extract → Classify → Vault → Prune) and grouped setup, configuration,
+  and troubleshooting sections by audience. Consolidated duplicate
+  flag-reference tables, moved the architecture diagram earlier, and
+  added a quick-start section so new users can go from clone to first
+  vault note in under a minute.
+
 ## [1.0.2] - 2026-07-22
 
 ### Fixed
