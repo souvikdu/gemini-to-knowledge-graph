@@ -21,19 +21,45 @@ from common import (
     load_config, load_topics, canonicalize_topic, log, yaml_str, chat_fingerprint,
     dedup_case_insensitive, iter_chats, load_existing_vault_state,
     get_db_connection, load_all_classifications, sync_chats_to_db,
+    make_safe_filename, die,
 )
 
 
-def make_safe_filename(name):
-    # Replace newlines/tabs with spaces first, then strip control characters
-    safe = name.replace("\r\n", " ").replace("\n", " ").replace("\r", " ").replace("\t", " ")
-    safe = "".join(c for c in safe if c not in r'<>:"/\|?*' and ord(c) >= 32)
-    safe = safe.strip().rstrip(".")
-    if not safe:
-        safe = "unnamed"
-    if len(safe) > 150:
-        safe = safe[:150].rstrip()
-    return safe
+# ── Hub-note filename collision resolution ─────────────────────────────
+
+
+def build_topic_filename_map(chat_topics, topic_canonical_case, known_categories_lower):
+    """Map of ``{lowercased_topic: winner_spelling}`` for topic names whose
+    ``make_safe_filename()`` outputs collide across different chats.
+
+    Groups all topic names by safe filename, then for each group with >1
+    member picks the alphabetically-first spelling as the winner.  The
+    returned dict remaps every colliding name to that winner (minus the
+    winner itself).  Apply after ``dedup_case_insensitive`` in the
+    conversation-processing loop, then re-dedup.
+    """
+    safe_groups = {}  # safe_lower -> {canonicalized names}
+
+    for cid, rec in chat_topics.items():
+        if not rec or rec.get("status") != "ok":
+            continue
+        for raw_name in rec.get("topic", []):
+            if raw_name.strip().lower() in known_categories_lower:
+                continue
+            canonical = canonicalize_topic(raw_name, topic_canonical_case)
+            safe = make_safe_filename(canonical).lower()
+            safe_groups.setdefault(safe, set()).add(canonical)
+
+    result = {}
+    for members in safe_groups.values():
+        if len(members) < 2:
+            continue
+        winner = min(members, key=lambda x: (x.lower(), x))
+        for member in members:
+            if member != winner:
+                result[member.lower()] = winner
+
+    return result
 
 
 def format_date(date_val):
@@ -175,9 +201,28 @@ def _prepare_vault(cfg, force):
     categories, _, topic_to_category, topic_canonical_case = load_topics(cfg)
     known_categories_lower = {c.lower(): c for c in categories}
 
+    # Die early if two categories produce the same safe filename — this
+    # cannot be resolved automatically because category hubs are defined
+    # by config/topics.json, not auto-generated from LLM output.
+    cat_safe_names = {}
+    for cat in categories:
+        safe = make_safe_filename(cat).lower()
+        if safe in cat_safe_names:
+            die(
+                f"✗ Category collision: '{cat}' and '{cat_safe_names[safe]}' both "
+                f"produce the safe filename '{make_safe_filename(cat)}'.\n\n"
+                f"  Rename one of them in config/topics.json."
+            )
+        cat_safe_names[safe] = cat
+
     conn = get_db_connection(cfg)
     sync_chats_to_db(conn, chats_dir)
     chat_topics = load_all_classifications(conn)
+    topic_filename_map = build_topic_filename_map(
+        chat_topics, topic_canonical_case, known_categories_lower,
+    )
+    if topic_filename_map:
+        log(f"Filename collision map: {len(topic_filename_map)} topic names remapped")
     if not chat_topics:
         log("No classifications yet — conversations will be written without category/topic links.")
         log("  Run classify_chats.py later to add the graph hierarchy.")
@@ -233,6 +278,7 @@ def _prepare_vault(cfg, force):
         "chat_topics": chat_topics,
         "existing_vault": existing_vault,
         "search_url": search_url,
+        "topic_filename_map": topic_filename_map,
     }
 
 
@@ -252,6 +298,7 @@ def _process_conversations(ctx):
     known_categories_lower = ctx["known_categories_lower"]
     topic_to_category = ctx["topic_to_category"]
     topic_canonical_case = ctx["topic_canonical_case"]
+    topic_filename_map = ctx["topic_filename_map"]
     chat_topics = ctx["chat_topics"]
     existing_vault = ctx["existing_vault"]
     search_url = ctx["search_url"]
@@ -302,6 +349,14 @@ def _process_conversations(ctx):
                 for t in rec.get("topic", [])
             ]
             topics_for_chat = dedup_case_insensitive(topics_for_chat)
+
+            # Remap colliding topic names to a deterministic spelling
+            topics_for_chat = [
+                topic_filename_map.get(t.lower(), t)
+                for t in topics_for_chat
+            ]
+            topics_for_chat = dedup_case_insensitive(topics_for_chat)
+
             filtered = []
             for t in topics_for_chat:
                 if t.lower() in known_categories_lower:
