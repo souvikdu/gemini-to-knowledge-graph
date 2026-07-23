@@ -6,6 +6,20 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Contributing guide** (`docs/CONTRIBUTING.md`). Lightweight guide
+  covering setup, PR workflow, testing expectations, and project
+  philosophy for contributors.
+
+### Fixed
+
+- **Broken README links to docs files**. Renamed three docs files
+  `docs/Architecture.md` → `docs/ARCHITECTURE.md`,
+  `docs/Cli.md` → `docs/CLI.md`, and
+  `docs/Configuration.md` → `docs/CONFIGURATION.md` to match the
+  uppercase references already used in `README.md`.
+
 ### Changed
 
 - **README restructured for clarity** (`README.md`). Reorganized the
