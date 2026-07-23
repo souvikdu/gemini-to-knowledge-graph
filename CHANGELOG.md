@@ -8,6 +8,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Strip inline image tags from vault notes** (`obsidian_layout.py`).
+  Gemini's exported JSON sometimes includes `<Image .../>` placeholders for images that are dead outside a live Gemini session. A new
+  `_strip_generated_image_tags()` helper replaces them with an Obsidian
+  `[!info]-` callout preserving the original caption or alt text, so the
+  conversation reads cleanly instead of showing raw XML markup.
+  Called alongside `_resolve_link_placeholders()` in the turn loop.
+
 - **Contributing guide** (`docs/CONTRIBUTING.md`). Lightweight guide
   covering setup, PR workflow, testing expectations, and project
   philosophy for contributors.
