@@ -106,6 +106,21 @@ def _resolve_link_placeholders(text, search_url):
     return text
 
 
+_IMAGE_TAG_RE = re.compile(r"<Image\b([^/]*)/>", re.IGNORECASE)
+_ATTR_RE = re.compile(r'(\w+)="([^"]*)"')
+
+
+def _strip_generated_image_tags(text):
+    """Replace Gemini's inline <Image .../> placeholders with the
+    caption/alt text Gemini gave us, so the note renders something
+    readable instead of raw XML markup."""
+    def _replacer(m):
+        attrs = dict(_ATTR_RE.findall(m.group(1)))
+        label = attrs.get("caption") or attrs.get("alt") or "image"
+        return f"\n> [!info]- Image : {label}\n"
+    return _IMAGE_TAG_RE.sub(_replacer, text)
+
+
 # ── Load taxonomy + classifications ─────────────────────────────────────────
 
 
@@ -405,6 +420,8 @@ def _process_conversations(ctx):
             text = turn.get("text", "")
             # Replace Gemini's [text](_link) placeholders with browser-search links
             text = _resolve_link_placeholders(text, search_url)
+            # Strip Gemini's inline AI-generated image tags, preserving caption/alt
+            text = _strip_generated_image_tags(text)
             if role == "user":
                 label = user_label
                 lines = text.split("\n")
