@@ -20,16 +20,16 @@ import os
 import sys
 
 from common import (
-    load_config,
-    log,
-    get_db_connection,
-    sync_chats_to_db,
-    find_orphaned_cids,
-    exceeds_prune_safety_threshold,
-    delete_classifications,
     add_ignored_conversations,
-    remove_ignored_conversations,
+    delete_classifications,
+    exceeds_prune_safety_threshold,
+    find_orphaned_cids,
+    get_db_connection,
+    load_config,
     load_existing_vault_state,
+    log,
+    remove_ignored_conversations,
+    sync_chats_to_db,
 )
 
 
@@ -137,7 +137,7 @@ def main():
     cfg = load_config()
     conn = get_db_connection(cfg)
 
-    flags = set(a for a in sys.argv[1:] if a.startswith("-"))
+    flags = {a for a in sys.argv[1:] if a.startswith("-")}
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
 
     # ── List-ignored / unignore — fast-path, no sync needed ─────────────

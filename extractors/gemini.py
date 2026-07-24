@@ -7,20 +7,23 @@ Run via ``python -m extractors.gemini``.
 
 import asyncio
 import json
-import os
 import logging
+import os
 from datetime import datetime, timezone
 
+import orjson
 from dotenv import load_dotenv
 from gemini_webapi import GeminiClient
-from gemini_webapi.types import ChatInfo, RPCData
 from gemini_webapi.constants import GRPC
+from gemini_webapi.types import ChatInfo, RPCData
 from gemini_webapi.utils import extract_json_from_response, get_nested_value
-import orjson
 
 from common import (
-    load_config, log, get_db_connection, load_ignored_conversations,
     get_chat_rows,
+    get_db_connection,
+    load_config,
+    load_ignored_conversations,
+    log,
 )
 from extractors.base import upsert_chat_and_file
 

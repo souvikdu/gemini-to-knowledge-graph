@@ -8,11 +8,10 @@ from unittest.mock import patch
 import pytest
 
 from classify_chats import (
+    compute_todo,
     parse_response,
     truncate_to_budget,
-    compute_todo,
 )
-
 
 SAMPLE_TOPIC_TO_CATEGORY = {
     "python": "Programming",
@@ -40,7 +39,7 @@ Summary: A discussion about algorithms and optimization techniques."""
         content = """Category: Python
 Topic: Python, Data Structures
 Summary: Discussion about Python data structures."""
-        cats, topics, summary = parse_response(content, SAMPLE_TOPIC_TO_CATEGORY)
+        cats, topics, _summary = parse_response(content, SAMPLE_TOPIC_TO_CATEGORY)
         # "Python" is a topic belonging to "Programming" → should be normalized
         assert cats == ["Programming"]
         assert topics == ["Python", "Data Structures"]
@@ -61,7 +60,7 @@ Summary: Some summary."""
         content = """Category: A, B, C, D
 Topic: 1, 2, 3, 4, 5, 6, 7
 Summary: Many things."""
-        cats, topics, summary = parse_response(content, SAMPLE_TOPIC_TO_CATEGORY)
+        cats, topics, _summary = parse_response(content, SAMPLE_TOPIC_TO_CATEGORY)
         assert len(cats) == 2
         assert len(topics) == 5
 
@@ -69,7 +68,7 @@ Summary: Many things."""
         content = """Category: Programming, Programming
 Topic: Python
 Summary: Duplicate check."""
-        cats, topics, summary = parse_response(content, SAMPLE_TOPIC_TO_CATEGORY)
+        cats, _topics, _summary = parse_response(content, SAMPLE_TOPIC_TO_CATEGORY)
         assert cats == ["Programming"]
 
     def test_empty_content_raises_valueerror(self):
