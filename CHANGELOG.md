@@ -6,9 +6,14 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [1.0.3] - 2026-07-24
+## [1.1.0] - 2026-07-24
 
 ### Added
+
+- **`api.model` field is now validated in config** (`common.py`). `load_config()`
+  checks that `api.model` is present in `config/config.json` and exits with a
+  clear error if missing. The field was already referenced in several places but
+  never explicitly validated. ([#18](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/18))
 
 - **Strip inline image tags from vault notes** (`obsidian_layout.py`). Gemini's exported JSON sometimes includes `<Image .../>` placeholders
   that get rendered as raw XML in the vault note. A new

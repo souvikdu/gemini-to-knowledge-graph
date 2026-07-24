@@ -27,6 +27,7 @@ PATH_KEYS = [
 ]
 API_KEYS = [
     "url",
+    "model",
     "temperature",
     "max_output_tokens",
     "timeout",
