@@ -8,6 +8,7 @@ Strict hierarchy (no direct shortcuts):
 Reads all settings from config/config.json.
 """
 
+import hashlib
 import json
 import math
 import os
@@ -15,15 +16,22 @@ import re
 import urllib.parse
 from datetime import datetime
 
-import hashlib
-
 from common import (
-    load_config, load_topics, canonicalize_topic, log, yaml_str, chat_fingerprint,
-    dedup_case_insensitive, iter_chats, load_existing_vault_state,
-    get_db_connection, load_all_classifications, sync_chats_to_db,
-    make_safe_filename, die,
+    canonicalize_topic,
+    chat_fingerprint,
+    dedup_case_insensitive,
+    die,
+    get_db_connection,
+    iter_chats,
+    load_all_classifications,
+    load_config,
+    load_existing_vault_state,
+    load_topics,
+    log,
+    make_safe_filename,
+    sync_chats_to_db,
+    yaml_str,
 )
-
 
 # ── Hub-note filename collision resolution ─────────────────────────────
 
@@ -40,7 +48,7 @@ def build_topic_filename_map(chat_topics, topic_canonical_case, known_categories
     """
     safe_groups = {}  # safe_lower -> {canonicalized names}
 
-    for cid, rec in chat_topics.items():
+    for rec in chat_topics.values():
         if not rec or rec.get("status") != "ok":
             continue
         for raw_name in rec.get("topic", []):

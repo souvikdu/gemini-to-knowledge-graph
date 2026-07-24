@@ -4,6 +4,7 @@ Shared fixtures for the gemini-to-knowledge-graph test suite.
 
 import json
 import sqlite3
+
 import pytest
 
 from common import init_db

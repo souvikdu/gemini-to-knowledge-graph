@@ -1,0 +1,17 @@
+﻿# ── Ruff configuration for gemini-to-knowledge-graph ──────────────
+#
+# Rules intentionally disabled:
+#   BLE001  — Catching Exception is intentional in resilient CLI
+#             scripts (retry loops, file-skip, network error handling).
+#             Narrowing every catch-site adds noise without real gain.
+#   ASYNC230 — Blocking open() in async functions — negligible perf
+#             impact for a single-user local extraction script.
+#   S112    — Bare except: continue — already handled by adjacent
+#             logging patterns; the lint doesn't add value here.
+
+[lint]
+ignore = [
+    "BLE001",
+    "ASYNC230",
+    "S112",
+]

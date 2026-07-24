@@ -5,8 +5,7 @@ SQLite helpers, prune helpers.
 
 import json
 
-from common import chat_fingerprint, yaml_str, canonicalize_topic
-
+from common import canonicalize_topic, chat_fingerprint, yaml_str
 
 # ── chat_fingerprint ─────────────────────────────────────────────────────────
 
@@ -425,7 +424,7 @@ class TestGetChatRow:
 
 class TestSyncChatsToDb:
     def test_new_file_gets_inserted(self, tmp_path, make_chat, db_conn):
-        from common import sync_chats_to_db, get_chat_row
+        from common import get_chat_row, sync_chats_to_db
         chats_dir = tmp_path / "chats"
         chats_dir.mkdir()
         chat = make_chat(cid="gemini_new")
@@ -438,7 +437,7 @@ class TestSyncChatsToDb:
         assert row["content_hash"] == chat_fingerprint(chat)
 
     def test_unchanged_file_does_not_rewrite(self, tmp_path, make_chat, db_conn):
-        from common import sync_chats_to_db, get_chat_row, upsert_chat
+        from common import get_chat_row, sync_chats_to_db, upsert_chat
         chats_dir = tmp_path / "chats"
         chats_dir.mkdir()
         chat = make_chat(cid="gemini_unchanged")
@@ -461,7 +460,7 @@ class TestSyncChatsToDb:
         assert before == after
 
     def test_changed_file_updates_content_hash(self, tmp_path, make_chat, db_conn):
-        from common import sync_chats_to_db, get_chat_row, upsert_chat
+        from common import get_chat_row, sync_chats_to_db, upsert_chat
         chats_dir = tmp_path / "chats"
         chats_dir.mkdir()
         chat = make_chat(cid="gemini_changed")
@@ -483,7 +482,7 @@ class TestSyncChatsToDb:
 
 class TestGetChatRows:
     def test_returns_matching_rows(self, db_conn):
-        from common import upsert_chat, get_chat_rows
+        from common import get_chat_rows, upsert_chat
         for cid in ["a", "b", "c"]:
             upsert_chat(db_conn, {
                 "conversation_id": cid,

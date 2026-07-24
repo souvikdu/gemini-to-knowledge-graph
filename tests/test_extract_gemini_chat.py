@@ -8,8 +8,7 @@ import os
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from common import upsert_chat, get_chat_row
-
+from common import get_chat_row, upsert_chat
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 

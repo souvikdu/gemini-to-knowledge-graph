@@ -21,19 +21,18 @@ import requests
 from dotenv import load_dotenv
 
 from common import (
-    load_config,
-    load_topics,
-    die,
-    log,
     chat_fingerprint,
     dedup_case_insensitive,
-    iter_chats,
+    die,
     get_db_connection,
+    iter_chats,
     load_all_classifications,
-    upsert_classification,
+    load_config,
+    load_topics,
+    log,
     sync_chats_to_db,
+    upsert_classification,
 )
-
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -285,7 +284,7 @@ def main():
 
     # CLI
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
-    flags = set(a for a in sys.argv[1:] if a.startswith("-"))
+    flags = {a for a in sys.argv[1:] if a.startswith("-")}
     retry = "--retry" in flags
     try:
         limit = int(args[0]) if args else None

@@ -302,7 +302,7 @@ def yaml_str(value) -> str:
 
 
 def log(msg):
-    ts = datetime.now().strftime("%H:%M:%S")
+    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
     print(f"[{ts}] {msg}")
 
 
