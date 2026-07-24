@@ -36,6 +36,13 @@ versions follow [Semantic Versioning](https://semver.org/).
   added a quick-start section so new users can go from clone to first
   vault note in under a minute.
 
+- **Pin ruff to 0.15.22 and exclude from Dependabot** (`requirements-dev.txt`, `.github/dependabot.yml`).
+  Pinned ruff to the exact version 0.15.22 so CI always runs a
+  consistent set of lint rules. Newer ruff releases added extra default
+  checks (BLE001, S112, DTZ005, etc.) that broke the CI pipeline on
+  pre-existing code. Ruff is also ignored by Dependabot to prevent
+  accidental version bumps from re-introducing the issue.
+
 ## [1.0.2] - 2026-07-22
 
 ### Fixed

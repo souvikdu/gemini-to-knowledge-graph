@@ -4,11 +4,17 @@ Tests for obsidian_layout.py — note_signature, resolve_note_action.
 
 
 from obsidian_layout import (
-    note_signature, resolve_note_action, make_safe_filename,
-    scaled_node_size, normalize_category, opening_prompt,
-    yaml_tag_block, format_date, _resolve_link_placeholders,
+    _resolve_link_placeholders,
+    _strip_generated_image_tags,
+    format_date,
+    make_safe_filename,
+    normalize_category,
+    note_signature,
+    opening_prompt,
+    resolve_note_action,
+    scaled_node_size,
+    yaml_tag_block,
 )
-
 
 # ── note_signature ──────────────────────────────────────────────────────────
 
@@ -395,3 +401,70 @@ class TestResolveLinkPlaceholders:
             "https://duckduckgo.com/?q=",
         )
         assert result == "Info here.\n\n"
+
+
+# ── _strip_generated_image_tags ──────────────────────────────────────────────
+
+
+class TestStripGeneratedImageTags:
+    """_strip_generated_image_tags replaces <Image .../> with a callout."""
+
+    def test_basic_image_tag_with_caption(self):
+        """caption attribute is used when present."""
+        text = '<Image alt="A dog" caption="A Border Collie in a stalk stance" src="tag_123"/>'
+        result = _strip_generated_image_tags(text)
+        expected = '\n> [!info]- Image : A Border Collie in a stalk stance\n'
+        assert result == expected
+
+    def test_image_tag_with_alt_only(self):
+        """falls back to alt when caption is absent."""
+        text = '<Image alt="A Border Collie" src="tag_456"/>'
+        result = _strip_generated_image_tags(text)
+        expected = '\n> [!info]- Image : A Border Collie\n'
+        assert result == expected
+
+    def test_image_tag_with_no_attributes(self):
+        """falls back to generic "image" when neither caption nor alt."""
+        text = '<Image src="tag_789"/>'
+        result = _strip_generated_image_tags(text)
+        expected = '\n> [!info]- Image : image\n'
+        assert result == expected
+
+    def test_multiple_image_tags(self):
+        """all image tags in the text are replaced."""
+        text = (
+            'See <Image alt="First" caption="First image"/> and '
+            '<Image alt="Second" caption="Second image"/>'
+        )
+        result = _strip_generated_image_tags(text)
+        assert result == (
+            'See \n> [!info]- Image : First image\n and '
+            '\n> [!info]- Image : Second image\n'
+        )
+
+    def test_case_insensitive_tag(self):
+        """handles <image .../> (lowercase) too."""
+        text = '<image alt="test" caption="Lowercase tag"/>'
+        result = _strip_generated_image_tags(text)
+        expected = '\n> [!info]- Image : Lowercase tag\n'
+        assert result == expected
+
+    def test_image_tag_embedded_in_surrounding_text(self):
+        """text before and after the tag is preserved."""
+        text = 'Here is a generated image: <Image alt="chart" caption="A bar chart"/> Hope it helps.'
+        result = _strip_generated_image_tags(text)
+        expected = 'Here is a generated image: \n> [!info]- Image : A bar chart\n Hope it helps.'
+        assert result == expected
+
+    def test_no_image_tag_is_untouched(self):
+        """text without any image tag passes through unchanged."""
+        text = 'Just a plain conversation turn with no images.'
+        result = _strip_generated_image_tags(text)
+        assert result == text
+
+    def test_extra_whitespace_in_attributes(self):
+        """handles extra spaces between attributes."""
+        text = '<Image  alt="dog"   caption="A dog image"  />'
+        result = _strip_generated_image_tags(text)
+        expected = '\n> [!info]- Image : A dog image\n'
+        assert result == expected
