@@ -8,6 +8,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Strip inline image tags from vault notes** (`obsidian_layout.py`). Gemini's exported JSON sometimes includes `<Image .../>` placeholders
+  that get rendered as raw XML in the vault note. A new
+  `_strip_generated_image_tags()` helper replaces them with an Obsidian
+  `[!info]-` callout preserving the original caption or alt text.
+  Called alongside `_resolve_link_placeholders()` in the turn loop.
+
 - **Contributing guide** (`docs/CONTRIBUTING.md`). Lightweight guide
   covering setup, PR workflow, testing expectations, and project
   philosophy for contributors.
@@ -29,6 +35,13 @@ versions follow [Semantic Versioning](https://semver.org/).
   flag-reference tables, moved the architecture diagram earlier, and
   added a quick-start section so new users can go from clone to first
   vault note in under a minute.
+
+- **Pin ruff to 0.15.22 and exclude from Dependabot** (`requirements-dev.txt`, `.github/dependabot.yml`).
+  Pinned ruff to the exact version 0.15.22 so CI always runs a
+  consistent set of lint rules. Newer ruff releases added extra default
+  checks (BLE001, S112, DTZ005, etc.) that broke the CI pipeline on
+  pre-existing code. Ruff is also ignored by Dependabot to prevent
+  accidental version bumps from re-introducing the issue.
 
 ## [1.0.2] - 2026-07-22
 
