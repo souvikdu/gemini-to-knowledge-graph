@@ -31,6 +31,7 @@ from common import (
     load_topics,
     log,
     sync_chats_to_db,
+    truncate_title,
     upsert_classification,
 )
 
@@ -386,7 +387,7 @@ def main():
         chat_text = truncate_to_budget(chat_text, input_budget_chars,
                                        limits["truncate_head_fraction"])
 
-        log(f"[{i}/{len(todo)}] {title[:70]}{' (truncated)' if was_truncated else ''}")
+        log(f"[{i}/{len(todo)}] {truncate_title(title)}{' (truncated)' if was_truncated else ''}")
 
         fp = chat_fingerprint(chat)
         record = {

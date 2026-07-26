@@ -112,6 +112,92 @@ exactly as documented in the template.
 
 ---
 
+## Sensitive-pattern scanning (`config/sensitive_patterns.json`)
+
+Used by `review_chats.py` to automatically flag chats that might contain
+personal or sensitive information. The review stage can be run at any time
+(including mid-pipeline after classification), but it's most useful before
+classification so you can filter out unwanted chats early. If you do
+classify first and then decide to prune, `prune_chats.py` cleans up the
+classifications and vault notes as part of its deletion cascade — no
+manual cleanup needed. See [CLI.md](CLI.md#reviewing-extracted-chats) for how the scan
+runs and how flags show up in the review manifest; this section covers only
+the config file's shape.
+
+### Setup
+
+This file doesn't ship as `config/sensitive_patterns.json` directly —
+copy the template first:
+
+```bash
+cp config/sensitive_patterns_example.json config/sensitive_patterns.json
+```
+
+Then edit your copy. Like `topics.json`, the template
+(`sensitive_patterns_example.json`) is tracked in git; your actual
+`sensitive_patterns.json` is gitignored, since — unlike the taxonomy — its
+whole purpose is to hold things that are personal to you (your name, your
+address, family members' names) and must never end up in a public repo or
+commit history.
+
+If `config/sensitive_patterns.json` doesn't exist, `review_chats.py` simply
+runs with no scanning at all — this file is entirely optional.
+
+### Schema
+
+```json
+{
+  "patterns": {
+    "email": "[\\w.+-]+@[\\w-]+\\.[\\w.-]+",
+    "phone": "\\b\\d{3}[-.\\s]?\\d{3}[-.\\s]?\\d{4}\\b"
+  },
+  "keywords": {
+    "family_name": ["Jane Doe", "Janie"],
+    "home_address": ["123 Example Street"]
+  }
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `patterns` | `{alias: regex string}`. Matched with `re.search` against each chat's title and every turn's text. Compiled once at startup — an invalid regex fails immediately with the offending alias named in the error. |
+| `keywords` | `{alias: array of literal strings}`. Matched as a plain case-insensitive substring — not a regex — so you can safely include things like `+` or `.` in a name or address without escaping them. Each alias maps to a *list* so one alias can cover multiple spellings/variants (e.g. a nickname and a full name both under `family_name`). |
+
+Both sections are optional — you can have only `patterns`, only `keywords`,
+or both. `config/sensitive_patterns_example.json` in this repo has a fuller
+example covering email, credit card, IPv4/IPv6 addresses, and a range of
+personal-info keyword categories (name, phone, home address, birth date,
+etc.) as a starting point.
+
+### What appears where — aliases only, never values
+
+Only the **alias name** (`email`, `family_name`, etc.) ever shows up in the
+review manifest's `flags` column, in log output, or anywhere else this tool
+writes to disk. The literal pattern/keyword values you configure, and the
+actual matched text from your chats, are never written anywhere except back
+to your own terminal — and only then if you explicitly ask for it via
+`review_chats.py --show-sensitive <id>` or `--show-sensitive-all` (see
+[CLI.md](CLI.md#reviewing-extracted-chats)).
+
+### Editing this file doesn't retroactively re-flag old chats
+
+`review_chats.py`'s default run only scans chats that are brand new or whose
+content has changed since the last scan — it does not re-open every chat
+file on every ordinary run. This means editing `sensitive_patterns.json`
+(adding a new keyword, tightening a regex) only affects chats scanned
+*after* the edit; chats that were already scanned under the old rules keep
+their old `flags` value until you explicitly force a full re-scan:
+
+```bash
+python review_chats.py --scan-sensitive
+```
+
+This is a deliberate trade-off — the alternative (re-scanning your entire
+chat history on every run) would defeat the point of the incremental design
+for what's usually an infrequent edit.
+
+---
+
 ## Configuring the vault graph
 
 By default, the vault is generated at `Obsidian_Vault/` in the project
@@ -193,3 +279,9 @@ conversations newest-first the same way.
 > **Graph view:** `sortspec.md` is a config file, not a real note. Exclude
 > it via **Settings → Files & Links → Excluded files**, or right-click it
 > in the graph and choose "Exclude this file from graph."
+
+> **Note:** the review manifest (`review/chats_to_review.csv`, produced by
+> `review_chats.py`) sorts newest-first the same way, but by `updated_at`
+> rather than this setting — it's a separate, fixed sort chosen to match
+> Gemini's own conversation sidebar ordering, not something this config
+> block controls. See [CLI.md](CLI.md#reviewing-extracted-chats).

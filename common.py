@@ -206,6 +206,15 @@ def make_safe_filename(name):
     return safe
 
 
+def truncate_title(title: str, max_len: int = 120) -> str:
+    """Truncate title to max_len characters, appending '...' if cut."""
+    if not title:
+        return ""
+    if len(title) > max_len:
+        return title[: max_len - 3].rstrip() + "..."
+    return title
+
+
 def canonicalize_topic(name, topic_canonical_case):
     """Fold case/whitespace variants of a known topic back to one canonical
     spelling, so 'prompt engineering' and 'Prompt Engineering' land on the
