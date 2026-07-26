@@ -6,6 +6,74 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-26
+
+### Added
+
+- **Review stage** (`review_chats.py`): a new optional stage between extraction
+  ([#24](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/24))
+  and classification. Generates an editable CSV manifest
+  (`review/chats_to_review.csv`) so you can skim titles, flag sensitive content,
+  and mark chats for deletion without opening a single JSON file. Includes:
+  - **Sensitive-info scanning** against configurable regex patterns and keyword
+    lists from `config/sensitive_patterns.json`. Only alias names (e.g.
+    `email`, `family_name`) are ever persisted — never the matched text.
+  - **Incremental scanning by default** — only new and content-changed chats
+    are scanned on each run. `--scan-sensitive` forces a full re-scan when
+    pattern rules are edited.
+  - **Review lifecycle** — `reviewed` moves through `NO → YES → RE-REVIEW`.
+    `--mark-reviewed` collapses all pending rows to `YES` in one batch action.
+  - **Match inspection** — `--show-sensitive <id>` / `--show-sensitive-all`
+    display the actual matched context on demand, without writing sensitive
+    data to disk.
+
+- **Sensitive-patterns example config** (`config/sensitive_patterns.example.json`):
+  template with email, phone, credit-card, IPv4/IPv6, and personal-info keyword
+  categories (name, address, birth date, etc.) as a starting point.
+
+- **Prune integration with review manifest** (`prune_chats.py`): reads
+  `DEL`-marked rows from the review manifest via
+  `read_and_validate_manifest()` and folds them into its own
+  candidate-discovery step alongside file orphans. The full cascade —
+  classifications DB row, `chats` table entry, vault note, JSON file, ignore
+  list — stays in one script, with a single safety gate for both mechanisms.
+
+- **`truncate_title()`** (`common.py`): shared helper that truncates a chat
+  title to 120 characters with `...` suffix. Used by review, classify, and
+  vault stages for compact log and manifest output.
+
+- **Tests** (`tests/test_review_chats.py`, `tests/test_prune_chats.py`):
+  comprehensive coverage for the review manifest lifecycle, sensitive-info
+  scanning, prune-discovery from both orphans and manifest rows, cascade
+  safety, and manifest rewrite after pruning.
+
+### Changed
+
+- **`prune_chats.py` refactored** — imports `read_and_validate_manifest()` and
+  `write_manifest_atomically()` from `review_chats.py`; discovers deletion
+  candidates from both file orphans and manifest `DEL` rows; rewrites the
+  manifest after pruning to drop successfully-pruned and stale rows.
+
+### Documentation
+
+- **`docs/ARCHITECTURE.md`** — added `truncate_title()` to shared utilities
+  list; rewrote the Review stage section with clearer subsections (manifest,
+  scanning, lifecycle, inspection, prune coupling); clarified that
+  `--scan-sensitive` is only needed when pattern rules are edited.
+- **`docs/CLI.md`** — full review-stage command reference with every flag;
+  manifest column semantics (action, reviewed, flags); recommended workflow;
+  troubleshooting entries for manifest issues, stuck RE-REVIEW, CSV
+  permission errors, and stale flags after pattern edits.
+- **`docs/CONFIGURATION.md`** — full sensitive-pattern scanning setup guide
+  with schema reference and alias-only persistence guarantee; clarified that
+  review can run at any time and prune handles downstream cleanup.
+- **`docs/DESIGN_NOTES.md`** — review design decisions (explicit KEEP/DEL,
+  manifest as staging not state, RE-REVIEW semantics, manifest sort order,
+  incremental scanning); reframed "deliberately dumb" matcher rationale to
+  emphasize false-negative avoidance.
+- **`README.md`** — updated review-stage callout to reflect it can run at
+  any time, recommended before classification.
+
 ## [1.1.0] - 2026-07-24
 
 ### Added

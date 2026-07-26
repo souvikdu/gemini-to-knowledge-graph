@@ -1,6 +1,6 @@
 """
-Standalone pruning script — removes orphaned chat records from the database,
-regardless of classification status.
+Standalone pruning script — removes orphaned chat records and review-marked
+DELETE records from the database, regardless of classification status.
 
 Orphans are conversation IDs that exist in the ``chats`` table but whose JSON
 files no longer exist in ``chats_dir/``. This covers the pre-classification gap:
@@ -8,20 +8,26 @@ the old ``--prune`` flags on ``classify_chats.py`` and ``obsidian_layout.py``
 could only detect orphans among already-classified chats; this script checks
 everything the extractor has ever downloaded.
 
+Candidates for pruning are:
+1. Orphans: conversation IDs in the ``chats`` table whose JSON files no longer exist.
+2. Review-marked chats: existing conversation IDs marked ``DEL`` in ``review/chats_to_review.csv``.
+
 Usage:
-    python prune_chats.py                           # dry-run (list orphans)
+    python prune_chats.py                           # dry-run (list candidates)
     python prune_chats.py --prune                    # confirm and execute
     python prune_chats.py --prune --confirm-large-delete  # force large prune
     python prune_chats.py --list-ignored             # show ignored conversations
     python prune_chats.py --unignore <cid>           # lift an ignore entry
 """
 
+import json
 import os
 import sys
 
 from common import (
     add_ignored_conversations,
     delete_classifications,
+    die,
     exceeds_prune_safety_threshold,
     find_orphaned_cids,
     get_db_connection,
@@ -31,6 +37,49 @@ from common import (
     remove_ignored_conversations,
     sync_chats_to_db,
 )
+from review_chats import (
+    MANIFEST_PATH,
+    read_and_validate_manifest,
+    write_manifest_atomically,
+)
+
+
+def validate_review_delete_file(cid: str, conn, chats_dir: str) -> str | None:
+    """Validate candidate JSON file for a review-marked DELETE chat.
+
+    1. Retrieves ``source_file`` from the database record.
+    2. Verifies the candidate path is strictly inside ``chats_dir``.
+    3. Verifies the file exists and is a ``.json`` file.
+    4. Reads the JSON content and verifies its ``conversation_id`` matches ``cid``.
+
+    Returns the absolute file path if valid, or None if validation fails.
+    """
+    row = conn.execute(
+        "SELECT source_file FROM chats WHERE conversation_id = ?", (cid,)
+    ).fetchone()
+    if not row or not row["source_file"]:
+        return None
+
+    source_file = row["source_file"]
+    abs_chats_dir = os.path.abspath(chats_dir)
+    candidate_path = os.path.abspath(os.path.join(abs_chats_dir, source_file))
+
+    # Path traversal check
+    if not candidate_path.startswith(abs_chats_dir + os.sep) and candidate_path != abs_chats_dir:
+        return None
+
+    if not os.path.isfile(candidate_path) or not candidate_path.lower().endswith(".json"):
+        return None
+
+    try:
+        with open(candidate_path, "r", encoding="utf-8") as f:
+            chat_data = json.load(f)
+        if chat_data.get("conversation_id") != cid:
+            return None
+    except Exception:
+        return None
+
+    return candidate_path
 
 
 def _delete_vault_note(cid, convos_dir, state):
@@ -53,8 +102,8 @@ def _delete_vault_note(cid, convos_dir, state):
         return False
 
 
-def _do_prune(orphans, *, conn, cfg, **kwargs):
-    """Cascade-delete orphaned records and record them as ignored.
+def _do_prune(candidates_to_prune, *, conn, cfg, **kwargs):
+    """Cascade-delete records and record them as ignored.
 
     1. Delete from ``classifications`` (no-op if never classified)
     2. Delete from ``chats``
@@ -66,36 +115,40 @@ def _do_prune(orphans, *, conn, cfg, **kwargs):
     state, preventing orphan records that would be undiscoverable on
     retry.
     """
+    cids = list(candidates_to_prune)
+    if not cids:
+        return
+
     # Steps 1-3 in a single transaction
     with conn:
         # 1. Classifications
-        deleted_cls = delete_classifications(conn, list(orphans), commit=False)
+        deleted_cls = delete_classifications(conn, cids, commit=False)
         if deleted_cls:
-            log(f"Deleted {deleted_cls} orphaned classification(s) from DB.")
+            log(f"Deleted {deleted_cls} classification(s) from DB.")
 
         # 2. Chats table
-        placeholders = ",".join("?" * len(orphans))
+        placeholders = ",".join("?" * len(cids))
         conn.execute(
             f"DELETE FROM chats WHERE conversation_id IN ({placeholders})",
-            list(orphans),
+            cids,
         )
 
         # 3. Ignore list (so the extractor never re-fetches these)
-        add_ignored_conversations(conn, list(orphans), reason="deleted-by-user", commit=False)
+        add_ignored_conversations(conn, cids, reason="deleted-by-user", commit=False)
 
-    # 4. Vault notes — build state ONCE, not per orphan
+    # 4. Vault notes — build state ONCE, not per candidate
     vault_dir = cfg["paths"].get("vault_dir")
     removed_vault = 0
     if vault_dir:
         convos_dir = os.path.join(vault_dir, "Conversations")
         state = load_existing_vault_state(convos_dir)
-        for cid in orphans:
+        for cid in cids:
             if _delete_vault_note(cid, convos_dir, state):
                 removed_vault += 1
     if removed_vault:
-        log(f"Deleted {removed_vault} orphaned vault note(s).")
+        log(f"Deleted {removed_vault} vault note(s).")
 
-    log(f"Pruned {len(orphans)} conversation(s) — IDs added to ignore list.")
+    log(f"Pruned {len(cids)} conversation(s) — IDs added to ignore list.")
     log("Hub notes (Topic/Category) are not touched by this script —")
     log("they refresh automatically on the next 'python obsidian_layout.py' run.")
 
@@ -152,8 +205,9 @@ def main():
         return
 
     # ── Normal prune flow ───────────────────────────────────────────────
-    log("Syncing chat files to DB before computing orphans...")
-    sync_chats_to_db(conn, cfg["paths"]["chats_dir"])
+    chats_dir = cfg["paths"]["chats_dir"]
+    log("Syncing chat files to DB before discovering candidates...")
+    sync_chats_to_db(conn, chats_dir)
 
     known_cids = {
         row["conversation_id"]
@@ -165,45 +219,121 @@ def main():
         conn.close()
         return
 
-    orphans = find_orphaned_cids(known_cids, cfg["paths"]["chats_dir"])
+    manifest_rows = None
+    marked_del_cids = set()
+    stale_del_cids = set()
 
-    if not orphans:
-        log("No orphans found — all conversations have matching files.")
+    if os.path.exists(MANIFEST_PATH):
+        try:
+            manifest_rows = read_and_validate_manifest(MANIFEST_PATH)
+        except Exception as e:
+            die(f"Review manifest validation failed: {e}\nFix or remove '{MANIFEST_PATH}' to continue.")
+
+        for r in manifest_rows:
+            if r["action"] == "DEL":
+                cid = r["conversation_id"]
+                if cid in known_cids:
+                    marked_del_cids.add(cid)
+                else:
+                    stale_del_cids.add(cid)
+
+    orphans = find_orphaned_cids(known_cids, chats_dir)
+
+    if stale_del_cids:
+        log(f"Reported {len(stale_del_cids)} stale DEL row(s) in manifest (IDs no longer in DB).")
+
+    # Build candidate lookup
+    candidates = {}  # cid -> dict(reasons=set(), file_to_delete=path_or_None)
+
+    for cid in orphans:
+        candidates.setdefault(cid, {"reasons": set(), "file_to_delete": None})["reasons"].add("file missing")
+
+    for cid in marked_del_cids:
+        valid_file = validate_review_delete_file(cid, conn, chats_dir)
+        if valid_file:
+            cand = candidates.setdefault(cid, {"reasons": set(), "file_to_delete": None})
+            cand["reasons"].add("marked DEL")
+            cand["file_to_delete"] = valid_file
+        else:
+            log(f"  ⚠ Review-marked chat '{cid}' JSON file validation failed — skipping.")
+
+    if manifest_rows is not None:
+        unreviewed_count = sum(1 for r in manifest_rows if r["reviewed"] in ("NO", "RE-REVIEW"))
+        if unreviewed_count:
+            log(f"Review manifest: {unreviewed_count} chat(s) remain unreviewed (NO or RE-REVIEW).")
+
+    if not candidates:
+        log("No eligible candidates found for pruning.")
+        if stale_del_cids and "--prune" in flags and manifest_rows is not None:
+            new_manifest = [r for r in manifest_rows if r["conversation_id"] not in stale_del_cids]
+            write_manifest_atomically(new_manifest, MANIFEST_PATH)
+            log(f"Cleaned up {len(stale_del_cids)} stale DEL row(s) from review manifest.")
         conn.close()
         return
 
-    # Fetch titles from chats table for readable dry-run output
-    orphan_titles = {}
+    # Fetch DB titles for dry-run output
+    db_titles = {}
+    placeholders = ",".join("?" * len(candidates))
     for row in conn.execute(
-        "SELECT conversation_id, title FROM chats WHERE conversation_id IN ({})"
-        .format(",".join("?" * len(orphans))),
-        list(orphans),
+        f"SELECT conversation_id, title FROM chats WHERE conversation_id IN ({placeholders})",
+        list(candidates.keys()),
     ):
-        orphan_titles[row["conversation_id"]] = row["title"] or "(no title)"
+        db_titles[row["conversation_id"]] = row["title"] or "(no title)"
 
-    log(f"Found {len(orphans)} orphaned conversation(s)"
-        f" (file missing from chats/):")
-    for cid in sorted(orphans):
-        title = orphan_titles.get(cid, "(unknown)")
-        log(f"  - {title[:80]}  ({cid})")
+    # Build lookup of manifest flags if manifest exists
+    manifest_flags = {}
+    if manifest_rows:
+        manifest_flags = {r["conversation_id"]: r["flags"].strip() for r in manifest_rows if r.get("flags")}
+
+    log(f"Found {len(candidates)} conversation(s) eligible for pruning:")
+    for cid in sorted(candidates.keys()):
+        cand = candidates[cid]
+        title = db_titles.get(cid, "(unknown)")
+        reasons_str = " & ".join(sorted(cand["reasons"]))
+        cand_flags = manifest_flags.get(cid)
+        flags_suffix = f" | flags: {cand_flags}" if cand_flags else ""
+        log(f"  - {title[:80]}  ({cid}) [{reasons_str}{flags_suffix}]")
 
     if "--prune" in flags:
         max_ratio = cfg.get("limits", {}).get("max_prune_ratio", 0.3)
-        if exceeds_prune_safety_threshold(
-            len(orphans), len(known_cids), max_ratio
+        total_tracked = len(known_cids)
+        if (
+            exceeds_prune_safety_threshold(len(candidates), total_tracked, max_ratio)
+            and "--confirm-large-delete" not in flags
         ):
-            if "--confirm-large-delete" in flags:
-                _do_prune(orphans, conn=conn, cfg=cfg)
+            log(f"  ⚠ {len(candidates)} candidates out of {total_tracked} records"
+                f" ({len(candidates)/total_tracked:.1%}) exceeds {max_ratio:.0%} safety threshold.")
+            log("  Run with --prune --confirm-large-delete to force.")
+            conn.close()
+            return
+
+        # 1. Delete JSON files on disk for review-marked candidates
+        successfully_deleted_cids = []
+        for cid, cand in candidates.items():
+            fpath = cand["file_to_delete"]
+            if fpath:
+                try:
+                    os.remove(fpath)
+                    successfully_deleted_cids.append(cid)
+                except Exception as e:
+                    log(f"  ⚠ Failed to delete JSON file for '{cid}': {e}")
             else:
-                log(f"  ⚠ {len(orphans)} orphans out of {len(known_cids)}"
-                    f" records ({len(orphans)/len(known_cids):.1%})"
-                    f" exceeds {max_ratio:.0%} safety threshold.")
-                log("  Run with --prune --confirm-large-delete to force.")
-        else:
-            _do_prune(orphans, conn=conn, cfg=cfg)
+                successfully_deleted_cids.append(cid)
+
+        # 2. Perform DB & vault cascade
+        _do_prune(successfully_deleted_cids, conn=conn, cfg=cfg)
+
+        # 3. Finalize manifest
+        if manifest_rows is not None:
+            pruned_set = set(successfully_deleted_cids)
+            new_manifest = [
+                r for r in manifest_rows
+                if r["conversation_id"] not in pruned_set and r["conversation_id"] not in stale_del_cids
+            ]
+            write_manifest_atomically(new_manifest, MANIFEST_PATH)
+            log(f"Updated review manifest '{MANIFEST_PATH}' — removed pruned and stale rows.")
     else:
-        log("  Run with --prune to remove them from the database"
-            " and ignore list.")
+        log("  Run with --prune to remove them from database and ignore list.")
 
     conn.close()
 

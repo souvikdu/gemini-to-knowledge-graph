@@ -30,6 +30,7 @@ from common import (
     log,
     make_safe_filename,
     sync_chats_to_db,
+    truncate_title,
     yaml_str,
 )
 
@@ -347,9 +348,7 @@ def _process_conversations(ctx):
     for idx, (fpath, chat) in enumerate(files, 1):
         fname = os.path.basename(fpath)
         cid = chat.get("conversation_id") or fname.replace(".json", "")
-        title = chat.get("title") or "Untitled"
-        if len(title) > 120:
-            title = title[:117].rstrip() + "..."
+        title = truncate_title(chat.get("title") or "Untitled")
         turns = chat.get("turns", [])
 
         rec = chat_topics.get(cid)

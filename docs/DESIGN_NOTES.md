@@ -48,7 +48,13 @@ in-memory state — only the filesystem (`chats/*.json`) and the SQLite DB.
 Each stage can be re-run, debugged, or fail on its own without corrupting the
 others' state. You can reclassify without re-extracting, or rebuild the
 vault without reclassifying, which matters a lot when iterating on a prompt
-or a taxonomy edit rather than the extraction logic.
+or a taxonomy edit rather than the extraction logic. Review sits as an
+optional fourth stage between Extract and Classify, following the same
+independence rule — it only touches the filesystem (`review/chats_to_review.csv`)
+and the DB's `chats` table for reads, never the `classifications` table or
+the vault. (Cleaning those up when pruning is handled by
+`prune_chats.py` — see *Orphan cleanup was consolidated into one script*
+below.)
 
 ---
 
@@ -94,6 +100,94 @@ extractor writes both the JSON file and this metadata row at download time
 as the primary path; `sync_chats_to_db()` is a safety net that catches
 anything that reached `chats_dir` without going through the extractor — a
 file added or edited by hand during manual review, for instance.
+
+---
+
+## Review
+
+### Explicit KEEP/DEL per row, not "missing row means delete"
+An earlier design considered treating a chat's absence from a re-edited
+manifest as an implicit deletion instruction — skip writing the file back
+out, and whatever's missing gets pruned. This was rejected: a missing row
+can't be distinguished from an editor mistake, a truncated save, an
+accidental filter, or a chat that was simply extracted *after* the manifest
+was last generated. Requiring an explicit `DEL` marker per row means intent
+is always stated, never inferred from silence — the same reasoning already
+behind keeping the ignore list a distinct state (see *Shared state & safety*
+below) rather than overloading "not present" to mean something specific.
+
+### Review state lives only in the CSV until prune actually runs
+Marking a chat `DEL` does not write anywhere else — not to
+`ignored_conversations`, not to any DB table. `ignored_conversations` is
+live extractor state that the extractor consults on every run; writing a
+pending, possibly-reversible review decision into it the moment someone
+edits a CSV cell would mean a decision that hasn't been acted on yet is
+already influencing what gets re-fetched. Nothing becomes permanent until
+`prune_chats.py --prune` actually executes the cascade — the manifest is
+staging, not state.
+
+### RE-REVIEW instead of resetting straight back to NO
+When a previously-reviewed (`YES`) chat's content or sensitive-info flags
+change, it moves to `RE-REVIEW`, not back to `NO`. The distinction matters
+in practice, not just semantically: `NO` and `RE-REVIEW` behave identically
+for review purposes (both need a second look, both get swept up by
+`--mark-reviewed`), but collapsing a drifted, already-vetted chat back to
+"never reviewed" would ask the user to re-decide it from scratch on every
+run that happens to touch it — for an actively-used chat history, that's
+potentially dozens of re-decisions every single review pass. `RE-REVIEW`
+preserves the fact that the chat was already looked at once, so the ask is
+"confirm this is still fine" rather than "decide this from nothing," and
+`action` (`KEEP`/`DEL`) is deliberately left untouched by this transition —
+a chat someone already decided to keep doesn't silently become a deletion
+candidate just because it drifted.
+
+### Manifest sort order matches Gemini's own sidebar, not the vault's convention
+Rows are sorted newest-first by `updated_at`. This is a different key than
+the vault's own conversation sort (`created` vs. `updated`, see
+[CONFIGURATION.md](CONFIGURATION.md#sorting-conversations)) — the review
+manifest's sort was chosen specifically so a chat that just received a new
+message rises back toward the top of the manifest the same way it would in
+Gemini's own conversation sidebar, since "what's been active recently" is
+the more useful ordering for a pre-classification skim than "when did this
+conversation start."
+
+### Sensitive-info matching favors simplicity over false negatives
+Plain regex + literal case-insensitive substring matching, nothing smarter.
+No NER, no LLM-based classification of what counts as sensitive. This is a
+deliberate choice: the goal is to **never miss a match**, not to be
+surgically precise. False positives are acceptable — you can investigate
+them on demand with `--show-sensitive`. But a false negative — sensitive
+content the scanner silently ignores — is invisible and irrecoverable, which
+would defeat the purpose of having a scanner in the first place.
+
+This follows the same logic as the *Decisions considered and rejected*
+section below: a smarter matcher would need to be right often enough to be
+trusted unsupervised, and getting that right is its own hard problem
+disproportionate to what this feature needs to accomplish. A straightforward
+matcher with a cheap, on-demand inspection path is more auditable than an
+opaque one that's occasionally wrong in ways that are hard to notice.
+
+### Only alias names are ever persisted or displayed
+The manifest's `flags` column, log output, and every other place scan
+results surface show only the configured alias (`email`, `family_name`)
+never the literal pattern/keyword value or the matched text. The one
+deliberate exception is `--show-sensitive` / `--show-sensitive-all`, which
+print full matched context — but only on-demand, per-chat, straight to the
+terminal, never written back into the manifest or any other file. This
+keeps the manifest itself no more sensitive than the alias vocabulary a
+user already chose to configure.
+
+### Incremental scanning by default, explicit full re-scan on demand
+A default `review_chats.py` run only scans chats that are new or whose
+content has changed since the manifest was last generated — not the entire
+history, every time. Editing `config/sensitive_patterns.json` (a new
+keyword, a tightened regex) doesn't retroactively re-flag chats that were
+already scanned under the old rules; applying an edited rule set across
+existing history requires the explicit `--scan-sensitive` flag. This is the
+same trade-off underpinning `sync_chats_to_db()`'s mtime pre-filtering
+elsewhere in the pipeline: re-reading every file on every ordinary run to
+catch an infrequent edit isn't worth paying for by default, so the cost is
+made opt-in instead.
 
 ---
 
@@ -209,14 +303,21 @@ instead of each stage script owning a partial `--prune` flag that only
 cleaned up its own slice of state. Because it works directly off the `chats`
 metadata table rather than the `classifications` table, it can catch
 orphans that were deleted before ever being classified — the gap the old
-per-stage `--prune` flags couldn't see.
+per-stage `--prune` flags couldn't see. It's also the single place that acts
+on `review_chats.py`'s `DEL`-marked rows, for the same reason: one script
+owns the entire deletion cascade regardless of which mechanism (manual file
+deletion or manifest mark) decided a chat should go.
 
 ### A safety threshold gates large deletions
 Bulk-deleting a large fraction of tracked conversations in one run is far
 more likely to mean "pointed at the wrong `chats_dir`" than "intentional
 mass cleanup." The threshold makes that distinction the user's to confirm
 explicitly (`--confirm-large-delete`) rather than something that happens
-silently.
+silently. This applies identically whether the candidates came from file
+orphans, `DEL`-marked manifest rows, or a combination of both — the
+denominator is always the full set of currently-tracked chats, not a
+per-mechanism count, so marking a large batch `DEL` is held to the same bar
+as an equally large batch of orphans would be.
 
 ---
 
@@ -269,10 +370,6 @@ folding roadmap ideas in as if they were shipped would work against that.
   embedding models (typically 256–512 tokens), where raw conversation text
   often wouldn't. Embeddings would live in a dedicated table keyed by a hash
   of the summary text, resumable the same way every other stage is.
-- **A chat review manifest.** The reviewability idea above: a read-only CSV
-  export (filename, title, turn count, opening prompt) sorted to surface
-  likely throwaway chats first, so reviewing hundreds of chats before
-  classification doesn't require opening each one.
 - **Taxonomy promotion workflow.** A periodic pass to surface topics the
   classifier has coined that aren't yet in the seed taxonomy, so a
   genuinely recurring new topic gets promoted into `topics.json` as a

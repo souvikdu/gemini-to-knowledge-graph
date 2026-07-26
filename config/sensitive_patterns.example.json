@@ -1,0 +1,21 @@
+{
+  "patterns": {
+    "email": "[\\w.+-]+@[\\w-]+\\.[\\w.-]+",
+    "credit_card": "\\b\\d{4}[ -]?\\d{4}[ -]?\\d{4}[ -]?\\d{4}\\b",
+    "ipv4": "(?<!\\d\\.)\\b(?!127\\.)(?!0\\.0\\.0\\.0\\b)(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)){3}\\b(?!\\.\\d)",
+    "ipv6": "(?<![0-9A-Fa-f:.])(?!::1?(?![0-9A-Fa-f:.]))(?!fe[89ab][0-9a-fA-F]:)(?:(?:[A-Fa-f0-9]{1,4}:){1,7}:(?:[A-Fa-f0-9]{1,4}(?::[A-Fa-f0-9]{1,4})*)?|(?:[A-Fa-f0-9]{1,4}:){7}[A-Fa-f0-9]{1,4}|::(?:[A-Fa-f0-9]{1,4}:){0,6}[A-Fa-f0-9]{1,4}|::)(?![0-9A-Fa-f:.])"
+  },
+  "keywords": {
+    "name": ["your first name", "your last name", "your full name"],
+    "family_name": ["your family name"],
+    "father_name": ["father's name"],
+    "mother_name": ["mother's name"],
+    "phone": ["your phone number", "your mobile number", "your cell number"],
+    "personal_email": ["your personal email address", "your private email address"],
+    "home_address": ["street address or locality", "city or town", "state or province", "postal code"],
+    "personal_identifiers": ["passport ID", "national ID"],
+    "birth_date": ["23-01-2000", "23/01/2000", "23 Jan 2000", "23 January 2000"],
+    "company_name": ["employer or organization name"],
+    "user_name": ["online handle 1", "online handle 2"]
+  }
+}

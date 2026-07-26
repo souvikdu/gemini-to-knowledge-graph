@@ -4,7 +4,8 @@ For *why* the pipeline is shaped this way, see [DESIGN_NOTES.md](DESIGN_NOTES.md
 This doc covers *what's actually in the codebase*.
 
 ```
-Extract ──> Classify ──> Vault
+Extract ──> [Review] ──> Classify ──> Vault
+             optional
 ```
 
 ---
@@ -27,6 +28,10 @@ hashing, and database logic never drift between scripts:
   case-insensitively, preserving the first occurrence's casing
 - **`iter_chats(chats_dir)`** — generator that yields `(filepath, chat_dict)`
   for every `*.json` file in `chats/`, used by all downstream stages
+- **`truncate_title(title, max_len=120)`** — truncates a chat title to a
+  configurable maximum length (default 120 characters), appending `...` when
+  cut. Used by review, classify, and vault stages to keep log output and
+  manifest entries compact.
 - **`load_existing_vault_state(convos_dir)`** — scans an existing vault's
   `Conversations/` folder and returns a dict of `{cid: (notename, signature)}`
   for resume/rewrite-in-place detection
@@ -46,8 +51,9 @@ hashing, and database logic never drift between scripts:
 - **`sync_chats_to_db(conn, chats_dir)`** — scans `chats/*.json` using
   `os.scandir` + mtime pre-filtering, inserts or updates the `chats` table
   for any file whose `chat_fingerprint()` has changed. Called at the start
-  of `classify_chats.py`, `obsidian_layout.py`, and `prune_chats.py`'s
-  normal prune flow, so every stage's view of the DB is current before it acts.
+  of `classify_chats.py`, `obsidian_layout.py`, `review_chats.py`, and
+  `prune_chats.py`'s normal prune flow, so every stage's view of the DB is
+  current before it acts.
 - **`find_orphaned_cids` / `exceeds_prune_safety_threshold`**
   — shared helpers for `prune_chats.py`: find chat IDs with no corresponding
   file on disk, and safety-check the deletion ratio against a configurable
@@ -64,6 +70,49 @@ write pattern from `extractors/base.py`:
   "write JSON + set mtime + upsert DB" helper used by every extractor
 - **`extractors/gemini.py`** — Gemini Web extraction logic, run via
   `python -m extractors.gemini`
+
+---
+
+## Review stage (`review_chats.py`)
+
+An optional stage between extraction and classification. It generates an
+editable CSV manifest so you can skim titles, see automatically-flagged
+sensitive content, and mark chats for deletion — all without opening any
+JSON files.
+
+**Manifest.** `review/chats_to_review.csv` holds one row per chat with
+`reviewed` (NO/YES/RE-REVIEW), `action` (KEEP/DEL), `title`, and `flags`
+columns. Refreshing it preserves existing decisions by matching on
+`conversation_id` — only content that's actually changed gets updated.
+
+**Sensitive-info scanning.** If `config/sensitive_patterns.json` exists,
+each chat's title and turn text is scanned against your regex patterns and
+keyword lists. Only *alias names* (e.g. `email`, `family_name`) are ever
+recorded in the manifest — never the matched text itself. New and
+content-changed chats are scanned automatically. A full re-scan of every
+chat is only needed when you edit `config/sensitive_patterns.json` — use
+`--scan-sensitive` for that, since re-scanning unchanged chats on every
+ordinary run would defeat the incremental design.
+
+**Review lifecycle.** `reviewed` starts at `NO` for new chats, moves to
+`YES` once settled, and returns to `RE-REVIEW` (not `NO`) when a
+previously-reviewed chat's content or flags change — you know it needs
+another look without having to re-decide it from scratch. `--mark-reviewed`
+collapses all `NO` and `RE-REVIEW` rows to `YES` in one confirmed batch
+action.
+
+**Inspecting flagged content.** The manifest only shows alias labels. Use
+`--show-sensitive <id>` or `--show-sensitive-all` to see the actual matched
+context (surrounding text per match) for any flagged chat — straight in
+your terminal, without writing sensitive data to disk.
+
+**Coupling with `prune_chats.py`.** `review_chats.py` itself never deletes
+anything. Marking a chat `DEL` only stages it — `prune_chats.py` reads
+those rows via `read_and_validate_manifest()` and performs the actual
+deletion cascade (classification DB row, vault note, chat JSON file, and
+ignore-list entry). After pruning, the manifest is rewritten to drop
+successfully-pruned and stale rows. See [CLI.md](CLI.md#reviewing-extracted-chats)
+for the full command reference and manifest column semantics.
 
 ---
 
@@ -135,6 +184,9 @@ from — this is what makes the extractor package source-agnostic:
 block and `assistant`/`model` a labeled response block; anything else is
 rendered as plain text.
 
+`review_chats.py` reads this same shape for sensitive-info scanning, which
+is why it works regardless of which extractor produced a given chat file.
+
 ---
 
 ## Project Structure
@@ -146,22 +198,27 @@ gemini-to-knowledge-graph/
 │   ├── __init__.py
 │   ├── base.py                     # Shared upsert_chat_and_file() helper
 │   └── gemini.py                   # Gemini Web extraction
+├── review_chats.py                 # Optional — review manifest + sensitive-info scan
 ├── classify_chats.py               # Stage 2 — LLM classification
 ├── obsidian_layout.py              # Stage 3 — Vault builder
-├── prune_chats.py                  # Orphan cleanup from DB + vault
+├── prune_chats.py                  # Cascade cleanup from DB + vault (orphans + review DEL marks)
 ├── config/
 │   ├── config.example.json         # Template — copy to config.json
 │   ├── config.json                 # Your local config (gitignored)
 │   ├── topics.example.json         # Template — copy to topics.json
 │   ├── topics.json                 # Category/topic taxonomy (gitignored)
+│   ├── sensitive_patterns_example.json  # Template — copy to sensitive_patterns.json
+│   ├── sensitive_patterns.json     # Your regex/keyword rules (gitignored)
 │   └── prompts/
 │       └── classifier.md           # LLM prompt template
 ├── checkpoint/
 │   └── extraction_state_gemini.json  # Extraction progress checkpoint
 ├── chats/                          # Extracted conversations (gitignored)
+├── review/
+│   └── chats_to_review.csv         # Editable review manifest (gitignored)
 ├── docs/
 │   ├── CONFIGURATION.md            # Full config reference
-│   ├── CLI.md                      # Flags, resuming, pruning
+│   ├── CLI.md                      # Flags, resuming, review, pruning
 │   ├── ARCHITECTURE.md             # This file
 │   ├── DESIGN_NOTES.md             # Why the pipeline is shaped this way
 │   └── images/
@@ -179,6 +236,7 @@ gemini-to-knowledge-graph/
 │   ├── test_classify_chats.py
 │   ├── test_obsidian_layout.py
 │   ├── test_prune_chats.py
+│   ├── test_review_chats.py
 │   └── extractors/
 │       ├── test_base.py
 │       └── test_gemini.py
