@@ -1,4 +1,4 @@
-﻿# Environment
+# Environment
 .env
 
 # Generated databases
@@ -13,6 +13,8 @@ Obsidian_Vault/
 # Personal config / state (copy from *.example.json counterparts)
 config/config.json
 config/topics.json
+config/sensitive_patterns.json
+review/*.csv
 checkpoint/
 
 # Python

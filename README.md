@@ -80,7 +80,7 @@ Edit `.env` with your Gemini cookies (`GEMINI_1PSID`, `GEMINI_1PSIDTS` — from 
 Optionally, if you want automatic sensitive-info flagging during review:
 
 ```bash
-cp config/sensitive_patterns_example.json config/sensitive_patterns.json
+cp config/sensitive_patterns.example.json config/sensitive_patterns.json
 ```
 
 then edit it with your own regex patterns and personal keywords (name, address, etc.) — see [docs/CONFIGURATION.md](docs/CONFIGURATION.md#sensitive-pattern-scanning-configsensitive_patternsjson).
@@ -90,13 +90,14 @@ then edit it with your own regex patterns and personal keywords (name, address, 
 ```bash
 python -m extractors.gemini     # Stage 1 — extract
 python review_chats.py          # Optional — review before classifying, see below
+python review_chats.py --mask-sensitive --apply   # Optional — redact flagged info in chats you're keeping
 python classify_chats.py        # Stage 2 — classify
 python obsidian_layout.py       # Stage 3 — build vault
 ```
 
 Then open `Obsidian_Vault/` in Obsidian and explore the graph view.
 
-> Want to review chats — skim titles, flag sensitive content, mark chats for deletion? The review stage can be run at any time, but it's recommended before anything is classified or vaulted. See [docs/CLI.md](docs/CLI.md#reviewing-extracted-chats).
+> Want to review chats — skim titles, flag sensitive content, mark chats for deletion, or redact sensitive info in chats you'd rather keep? The review stage can be run at any time, but it's recommended before anything is classified or vaulted. See [docs/CLI.md](docs/CLI.md#reviewing-extracted-chats).
 
 ---
 

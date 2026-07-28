@@ -6,6 +6,39 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-29
+
+### Added
+
+- **`--mask-sensitive` / `--apply` flags for `review_chats.py`** ([#26](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/26)):
+  redacts matched sensitive spans in reviewed-and-kept chats instead of
+  forcing an all-or-nothing keep/delete choice. Preview-only without `--apply`;
+  with `--apply`, sensitive text in `title` + `turns[].text` is replaced by
+  `[REDACTED:{alias}]` markers. `credit_card` and `email` use partial masks
+  (last 4 digits / domain visible); all other aliases get full redaction.
+  Includes automatic mtime preservation to avoid checkpoint corruption, and
+  manifest `content_hash` / `flags` update to prevent spurious RE-REVIEW
+  flags on the next manifest refresh.
+
+- **Luhn validator for `credit_card` pattern**: the `credit_card` regex
+  is now a deliberately loose `\b(?:\d[ -]?){12,18}\d\b` (13–19 digit
+  candidates) paired with a Luhn check in both `scan_chat_file()` and
+  `scan_chat_file_verbose()` to filter false positives. Existing manifests
+  with stale `credit_card` flags require `--scan-sensitive` to re-validate.
+
+### Fixed
+
+- **Email partial-mask format changed to avoid regex re-match loop**:
+  the previous `[REDACTED:email ...@domain]` format preserved the `@`
+  prefix, which caused the email regex to re-trigger on already-masked
+  text during re-scans. Changed to `[REDACTED:email domain=...]` so the
+  preserved fragment no longer matches the email pattern.
+
+### Changed
+
+- The example `credit_card` regex in `config/sensitive_patterns.example.json`
+  was replaced with the new wider pattern.
+
 ## [1.2.0] - 2026-07-26
 
 ### Added
