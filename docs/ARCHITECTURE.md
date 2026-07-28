@@ -114,6 +114,20 @@ ignore-list entry). After pruning, the manifest is rewritten to drop
 successfully-pruned and stale rows. See [CLI.md](CLI.md#reviewing-extracted-chats)
 for the full command reference and manifest column semantics.
 
+**Coupling with resumability (masking).** `--mask-sensitive --apply` is
+the only place `review_chats.py` writes to a chat JSON file rather than
+just the manifest. After writing, both the on-disk mtime and the `chats`
+table's `file_mtime` are explicitly restored to the chat's own
+`updated_at` (same pattern as `extractors/base.py` and
+`obsidian_layout.py`'s note-mtime stamping) — otherwise the extractor's
+`MAX(file_mtime)` checkpoint could get inflated by the masking
+operation's wall-clock time, risking silently missed conversations on a
+later extraction run. The manifest's `content_hash` is updated in the
+same operation, which is what keeps a freshly-masked `YES` row from
+bouncing to `RE-REVIEW`. No separate "was this masked" state exists —
+masking relies entirely on the same `chat_fingerprint()` drift detection
+already used everywhere else.
+
 ---
 
 ## Vault structure
@@ -207,7 +221,7 @@ gemini-to-knowledge-graph/
 │   ├── config.json                 # Your local config (gitignored)
 │   ├── topics.example.json         # Template — copy to topics.json
 │   ├── topics.json                 # Category/topic taxonomy (gitignored)
-│   ├── sensitive_patterns_example.json  # Template — copy to sensitive_patterns.json
+│   ├── sensitive_patterns.example.json  # Template — copy to sensitive_patterns.json
 │   ├── sensitive_patterns.json     # Your regex/keyword rules (gitignored)
 │   └── prompts/
 │       └── classifier.md           # LLM prompt template

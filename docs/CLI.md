@@ -78,6 +78,8 @@ stages that chat as a candidate. Nothing is gone until you run
 - `python review_chats.py --mark-reviewed` — after showing a summary of how many chats are `NO`/`RE-REVIEW`/`YES`, prompts for confirmation, then collapses every `NO` and `RE-REVIEW` row to `YES` in one shot. Does not touch the `action` column.
 - `python review_chats.py --show-sensitive <conversation_id>` — print the matched context (line + surrounding text) for every sensitive-pattern hit in one chat, so you can judge whether a flag is a real match or noise (e.g. a phone-number regex catching a log timestamp).
 - `python review_chats.py --show-sensitive-all` — same as above, but for every chat currently flagged in the manifest.
+- `python review_chats.py --mask-sensitive` — preview which reviewed-and-kept chats would have their sensitive spans redacted.
+- `python review_chats.py --mask-sensitive --apply` — redact matched sensitive spans directly in the chat JSON files (title + turn text), update the content hash, and clear the manifest flags. Replaces the sensitive text with ``[REDACTED:{alias}]`` (or ``[REDACTED:credit_card ...XXXX]`` / ``[REDACTED:email domain=...]`` for partial masks).
 
 ### The manifest: `review/chats_to_review.csv`
 
@@ -120,8 +122,14 @@ way it would in Gemini's UI.
 
 ```
 extract → review_chats.py → mark DEL rows and/or delete files by hand →
-  prune_chats.py (dry-run) → prune_chats.py --prune → classify → vault
+  prune_chats.py (dry-run) → prune_chats.py --prune →
+  review_chats.py --mask-sensitive --apply → classify → vault
 ```
+
+Insert ``review_chats.py --mask-sensitive --apply`` between prune and classify
+if you want to keep chats that have sensitive info but redact it before
+classification. The content-hash change from masking triggers automatic
+reclassification and vault-note rewrite on the next pipeline runs.
 
 You can also prune mid-pipeline any time — the classification and vault
 stages call `sync_chats_to_db()` automatically, so the DB is always current
@@ -169,6 +177,9 @@ traceback. Common ones:
 | `obsidian_layout.py` fails with `"Category name collision:"` | Two categories in `config/topics.json` map to the same safe filename. Rename one of them and re-run. |
 | `review_chats.py` says the manifest is missing/invalid | If missing, just run `python review_chats.py` to generate one. If invalid (malformed CSV, duplicate ID, bad `reviewed`/`action` value), the error names the specific problem — fix it by hand in `review/chats_to_review.csv`, or delete the file and regenerate (you'll lose existing `reviewed`/`action` marks). |
 | A chat stays stuck on `RE-REVIEW` no matter how often I regenerate the manifest | Regenerating never clears `RE-REVIEW` on its own — that's the point, it's a "look again" flag, not something that resolves itself. Either run `python review_chats.py --mark-reviewed` to confirm and clear it (along with every other pending row), or edit its `reviewed` value to `YES` by hand. |
-| `--scan-sensitive` says the sensitive config is missing | `cp config/sensitive_patterns_example.json config/sensitive_patterns.json`, then edit it — see [CONFIGURATION.md](CONFIGURATION.md#sensitive-pattern-scanning-configsensitive_patternsjson). Without this flag, `review_chats.py` runs fine with no scanning at all; the flag is only required for a forced full re-scan. |
+| `--scan-sensitive` says the sensitive config is missing | `cp config/sensitive_patterns.example.json config/sensitive_patterns.json`, then edit it — see [CONFIGURATION.md](CONFIGURATION.md#sensitive-pattern-scanning-configsensitive_patternsjson). Without this flag, `review_chats.py` runs fine with no scanning at all; the flag is only required for a forced full re-scan. |
 | A `flags` value I expected to update after editing `sensitive_patterns.json` didn't change | Editing the pattern file doesn't retroactively re-flag chats whose content hasn't changed — only new/changed chats are auto-scanned. Run `python review_chats.py --scan-sensitive` to apply your edits across the full existing history. |
+| `credit_card` flags still show false positives from before the tightened regex + Luhn check | The Luhn validator and new pattern only apply to *future* scans. Run `python review_chats.py --scan-sensitive` to re-scan all chats with the updated rules and clear stale flags. |
 | `review_chats.py` fails with a `PermissionError` writing to `review/chats_to_review.csv` | The CSV file is open in another application (e.g. Excel, Google Sheets, or a text editor). Close the file and try again. |
+| `--mask-sensitive` says no chats would be masked, but `--scan-sensitive` reported flags | Masking only considers `reviewed == YES` + `action == KEEP` rows. A flagged chat still at `NO` or `RE-REVIEW` won't be touched — check that row's `reviewed` column. |
+| A chat still shows flags after `--mask-sensitive --apply` | Logged as a warning when it happens — means a pattern didn't fully cover the matched text. Check with `--show-sensitive <id>` and consider tightening that pattern. |

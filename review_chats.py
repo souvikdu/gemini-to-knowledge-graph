@@ -8,6 +8,8 @@ Usage:
     python review_chats.py --mark-reviewed  # Confirm and mark all unreviewed (NO or RE-REVIEW) as YES
     python review_chats.py --show-sensitive <conversation_id>  # Show sensitive matches for one chat
     python review_chats.py --show-sensitive-all               # Show sensitive matches for all flagged chats
+    python review_chats.py --mask-sensitive                   # Preview which reviewed KEEP chats would be masked
+    python review_chats.py --mask-sensitive --apply            # Redact sensitive spans in reviewed KEEP chats
 """
 
 import csv
@@ -15,9 +17,11 @@ import json
 import os
 import re
 import sys
+from datetime import datetime
 
 from common import (
     REPO_ROOT,
+    chat_fingerprint,
     die,
     get_db_connection,
     load_config,
@@ -89,6 +93,118 @@ def load_sensitive_rules(config_path: str = SENSITIVE_CONFIG_PATH):
     return patterns, keywords
 
 
+# ── Luhn validator for credit_card ──────────────────────────────────────────
+
+
+def luhn_valid(digits: str) -> bool:
+    """Validate a digit string using the Luhn algorithm (ISO/IEC 7812)."""
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        n = int(ch)
+        if i % 2 == 1:
+            n *= 2
+            if n > 9:
+                n -= 9
+        total += n
+    return total % 10 == 0
+
+
+VALIDATORS: dict[str, callable] = {
+    "credit_card": lambda matched: luhn_valid(re.sub(r"[ -]", "", matched)),
+}
+
+
+# ── Masking helpers ─────────────────────────────────────────────────────────
+
+
+def _mask_credit_card(matched_text: str) -> str:
+    digits = re.sub(r"[ -]", "", matched_text)
+    return f"[REDACTED:credit_card ...{digits[-4:]}]"
+
+
+def _mask_email(matched_text: str) -> str:
+    _, sep, domain = matched_text.partition("@")
+    # Drop the "@" prefix so the email regex can't re-match the masked text
+    return f"[REDACTED:email domain={domain}]" if sep else "[REDACTED:email]"
+
+
+PARTIAL_MASKERS: dict[str, callable] = {
+    "credit_card": _mask_credit_card,
+    "email": _mask_email,
+}
+# Anything not listed here (ipv4, ipv6, and every keyword alias) gets a
+# full "[REDACTED:{alias}]" replacement. Keyword aliases must NEVER be
+# added to PARTIAL_MASKERS — they're literal real PII the user configured,
+# not a low-sensitivity value like a card's last 4 digits.
+
+
+def mask_chat_content(chat: dict, patterns: dict | None, keywords: dict | None) -> tuple[dict, bool]:
+    """Redact matched spans in title + turn text of *chat*.
+
+    Mutates and returns the dict plus a bool indicating whether anything
+    actually changed.  Pure aside from mutating the passed-in dict — no
+    file I/O, directly unit testable.
+    """
+    changed = False
+
+    def _mask_text(text):
+        nonlocal changed
+        if not text:
+            return text
+        original = text
+        if patterns:
+            for alias, compiled_re in patterns.items():
+                validator = VALIDATORS.get(alias)
+
+                def _sub(m, alias=alias, validator=validator):
+                    matched = m.group()
+                    if validator and not validator(matched):
+                        return matched
+                    masker = PARTIAL_MASKERS.get(alias)
+                    return masker(matched) if masker else f"[REDACTED:{alias}]"
+
+                text = compiled_re.sub(_sub, text)
+        if keywords:
+            for alias, kw_list in keywords.items():
+                for kw in kw_list:
+                    text = re.compile(re.escape(kw), re.IGNORECASE).sub(
+                        f"[REDACTED:{alias}]", text
+                    )
+        if text != original:
+            changed = True
+        return text
+
+    if chat.get("title"):
+        chat["title"] = _mask_text(chat["title"])
+    for turn in chat.get("turns", []):
+        if turn.get("text"):
+            turn["text"] = _mask_text(turn["text"])
+
+    return chat, changed
+
+
+def mask_chat_file(fpath: str, patterns, keywords) -> dict | None:
+    """Read, mask, and atomically overwrite a chat JSON file.
+
+    Returns the masked chat dict if anything was changed, or None if no
+    masking was needed (e.g. the flagged span was Luhn-invalid, or already
+    edited by hand).
+    """
+    with open(fpath, "r", encoding="utf-8") as f:
+        chat = json.load(f)
+    masked_chat, changed = mask_chat_content(chat, patterns, keywords)
+    if not changed:
+        return None
+    tmp = fpath + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(masked_chat, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, fpath)
+    return masked_chat
+
+
+# ── Scanning ────────────────────────────────────────────────────────────────
+
+
 def scan_chat_file(fpath: str, patterns: dict | None, keywords: dict | None) -> str:
     """Scan a chat JSON file against regex patterns and literal keywords.
 
@@ -119,10 +235,16 @@ def scan_chat_file(fpath: str, patterns: dict | None, keywords: dict | None) -> 
 
     if patterns:
         for alias, compiled_re in patterns.items():
+            validator = VALIDATORS.get(alias)
             for text in text_elements:
-                if compiled_re.search(text):
-                    matched_aliases.add(alias)
-                    break
+                if validator:
+                    if any(validator(m.group()) for m in compiled_re.finditer(text)):
+                        matched_aliases.add(alias)
+                        break
+                else:
+                    if compiled_re.search(text):
+                        matched_aliases.add(alias)
+                        break
 
     if keywords:
         for alias, kw_list in keywords.items():
@@ -171,9 +293,12 @@ def scan_chat_file_verbose(
 
     if patterns:
         for alias, compiled_re in patterns.items():
+            validator = VALIDATORS.get(alias)
             matches: list[tuple[str, str]] = []
             for text in text_elements:
                 for m in compiled_re.finditer(text):
+                    if validator and not validator(m.group()):
+                        continue
                     start = max(0, m.start() - ctx)
                     end = min(len(text), m.end() + ctx)
                     prefix = "..." if start > 0 else ""
@@ -588,6 +713,181 @@ def _handle_show_sensitive(
             print("  (no sensitive matches found)")
 
 
+def run_mask_sensitive(conn, cfg, apply_changes=False):
+    """Preview or apply sensitive-info masking on reviewed KEEP chats with flags.
+
+    Preview mode (default): prints aggregated per-alias counts grouped by
+    pattern vs. keyword origin, without modifying any files.
+    Apply mode (``apply_changes=True``): redacts matched spans in chat JSON
+    files, updates the DB (content hash, mtime), and rewrites the manifest
+    with the new hashes and cleared flags.
+    """
+    config_path = SENSITIVE_CONFIG_PATH
+    if not os.path.exists(config_path):
+        die(f"Sensitive patterns config missing at '{config_path}'.")
+    if not os.path.exists(MANIFEST_PATH):
+        die(f"Review manifest missing at '{MANIFEST_PATH}'. Run 'python review_chats.py' first.")
+
+    patterns, keywords = load_sensitive_rules(config_path)
+    if not patterns and not keywords:
+        die("No patterns or keywords defined in sensitive config — nothing to mask.")
+
+    try:
+        rows = read_and_validate_manifest(MANIFEST_PATH)
+    except Exception as e:
+        die(f"Manifest validation failed: {e}")
+
+    candidates = [
+        r for r in rows
+        if r["reviewed"] == "YES" and r["action"] == "KEEP" and r.get("flags", "").strip()
+    ]
+    if not candidates:
+        log("No reviewed KEEP chats with sensitive flags to mask.")
+        return
+
+    chats_dir = cfg["paths"]["chats_dir"]
+    sync_chats_to_db(conn, chats_dir)
+
+    pattern_aliases = set(patterns.keys()) if patterns else set()
+    keyword_aliases = set(keywords.keys()) if keywords else set()
+
+    # ── Preview mode ─────────────────────────────────────────────────────
+    if not apply_changes:
+        preview_pattern: dict[str, tuple[str, int]] = {}
+        preview_keyword: dict[str, int] = {}
+
+        for r in candidates:
+            cid = r["conversation_id"]
+            fpath = _resolve_chat_file(cid, conn, chats_dir)
+            if not fpath:
+                continue
+            matches = scan_chat_file_verbose(fpath, patterns, keywords)
+            seen_in_chat = set()
+            for alias, match_list in matches.items():
+                if alias in seen_in_chat:
+                    continue
+                seen_in_chat.add(alias)
+                example = match_list[0][1]
+                if alias in pattern_aliases:
+                    if alias == "credit_card":
+                        digits = re.sub(r"[ -]", "", example)
+                        example = f"...{digits[-4:]}"
+                    if alias not in preview_pattern:
+                        preview_pattern[alias] = (example, 0)
+                    prev_example, prev_count = preview_pattern[alias]
+                    preview_pattern[alias] = (prev_example, prev_count + 1)
+                elif alias in keyword_aliases:
+                    preview_keyword[alias] = preview_keyword.get(alias, 0) + 1
+
+        if preview_pattern:
+            print(
+                "Pattern-based matches — regexes can false-positive, "
+                "review before applying:"
+            )
+            for alias in sorted(preview_pattern):
+                example, count = preview_pattern[alias]
+                print(f"  [{alias}] {example} -> {count} chat(s)")
+            print()
+
+        if preview_keyword:
+            print(
+                "Keyword-based matches — exact literal values from "
+                "your own config:"
+            )
+            for alias in sorted(preview_keyword):
+                count = preview_keyword[alias]
+                print(f"  [{alias}] -> {count} chat(s)")
+            print()
+
+        log(f"{len(candidates)} chat(s) would be masked.")
+        log("Dry run — no files modified. Re-run with --apply to mask these chats.")
+        return
+
+    # ── Apply mode ────────────────────────────────────────────────────────
+    masked: dict[str, tuple[str, dict]] = {}
+    cleared_cids: set[str] = set()
+    nothing_to_mask = 0
+
+    for r in candidates:
+        cid = r["conversation_id"]
+        fpath = _resolve_chat_file(cid, conn, chats_dir)
+        if not fpath:
+            log(f"  Skipping {cid} — source file not found.")
+            cleared_cids.add(cid)
+            continue
+
+        result = mask_chat_file(fpath, patterns, keywords)
+        if result is None:
+            nothing_to_mask += 1
+            log(
+                f"  Nothing to mask for {cid} — flagged text no longer "
+                f"present or was a false positive."
+            )
+            cleared_cids.add(cid)
+        else:
+            masked[cid] = (fpath, result)
+
+    # Batch fixup: sync DB then restore correct mtime
+    if masked:
+        sync_chats_to_db(conn, chats_dir)
+
+        for cid, (fpath, masked_chat) in masked.items():
+            ts_str = masked_chat.get("updated_at", "")
+            if ts_str:
+                try:
+                    dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                    ts = dt.timestamp()
+                    os.utime(fpath, (ts, ts))
+                    conn.execute(
+                        "UPDATE chats SET file_mtime = ? WHERE conversation_id = ?",
+                        (ts, cid),
+                    )
+                except (ValueError, TypeError):
+                    pass
+        conn.commit()
+
+    # Update manifest rows
+    for r in candidates:
+        cid = r["conversation_id"]
+        if cid in masked:
+            fpath, masked_chat = masked[cid]
+            r["content_hash"] = chat_fingerprint(masked_chat)
+            r["title"] = truncate_title(masked_chat.get("title", ""))
+            new_flags = scan_chat_file(fpath, patterns, keywords)
+            r["flags"] = new_flags
+            if new_flags:
+                log(
+                    f"  ⚠ Warning: {cid} still has flags after masking: "
+                    f"{new_flags}"
+                )
+        elif cid in cleared_cids:
+            # Re-scan to refresh flags (e.g. Luhn false-positive now excluded)
+            fpath = _resolve_chat_file(cid, conn, chats_dir)
+            if fpath:
+                r["flags"] = scan_chat_file(fpath, patterns, keywords)
+            else:
+                r["flags"] = ""
+        # reviewed and action: leave untouched
+
+    write_manifest_atomically(rows, MANIFEST_PATH)
+
+    masked_count = len(masked)
+    log(f"Masked {masked_count} chat(s).")
+    if nothing_to_mask:
+        log(f"Skipped {nothing_to_mask} chat(s) — nothing to mask.")
+    if masked_count:
+        log("")
+        log(
+            "Their content_hash changed, so the next\n"
+            "`classify_chats.py` run will regenerate summaries from the "
+            "redacted text,\n"
+            "and `obsidian_layout.py` will rewrite their vault notes. Run "
+            "both before\n"
+            "opening the vault if you want the summaries/notes to reflect "
+            "the masking."
+        )
+
+
 def main():
     args = sys.argv[1:]
     flags = {a for a in args if a.startswith("-") and a != "--show-sensitive"}
@@ -612,6 +912,18 @@ def main():
 
     if "--mark-reviewed" in flags:
         mark_all_reviewed()
+        return
+
+    mask_sensitive = "--mask-sensitive" in flags
+    apply_mask = "--apply" in flags
+
+    if mask_sensitive:
+        cfg = load_config()
+        conn = get_db_connection(cfg)
+        try:
+            run_mask_sensitive(conn, cfg, apply_changes=apply_mask)
+        finally:
+            conn.close()
         return
 
     scan_sensitive = "--scan-sensitive" in flags

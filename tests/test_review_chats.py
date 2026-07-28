@@ -6,6 +6,7 @@ sensitive scanning, and mark-reviewed behavior.
 import csv
 import json
 import os
+from datetime import datetime
 from unittest.mock import patch
 
 import pytest
@@ -15,8 +16,13 @@ from common import chat_fingerprint, get_db_connection, upsert_chat
 from review_chats import (
     MANIFEST_HEADER,
     generate_or_refresh_manifest,
+    luhn_valid,
     mark_all_reviewed,
+    mask_chat_content,
     read_and_validate_manifest,
+    run_mask_sensitive,
+    scan_chat_file,
+    scan_chat_file_verbose,
     write_manifest_atomically,
 )
 
@@ -407,3 +413,393 @@ class TestMarkReviewed:
         assert refreshed[0]["reviewed"] == "YES"
         assert refreshed[1]["reviewed"] == "YES"
         assert refreshed[1]["action"] == "DEL"  # Action is preserved
+
+
+# ── Helpers for mask-sensitive tests ────────────────────────────────────────
+
+
+def _write_sensitive_config(sensitive_config_path, **overrides):
+    """Write a sensitive_patterns.json with reasonable defaults."""
+    config = {
+        "patterns": {
+            "credit_card": r"\b(?:\d[ -]?){12,18}\d\b",
+            "email": r"[\w.+-]+@[\w-]+\.[\w.-]+",
+        },
+        "keywords": {
+            "name": ["John"],
+            "secret": ["confidential"],
+        },
+    }
+    config.update(overrides)
+    with open(sensitive_config_path, "w", encoding="utf-8") as f:
+        json.dump(config, f)
+
+
+class TestLuhnValidator:
+    """Tests for ``luhn_valid()`` — known-valid vs random-digit rejection."""
+
+    def test_luhn_valid_known_good(self):
+        # Standard test PANs that pass Luhn
+        assert luhn_valid("4111111111111111") is True   # Visa test
+        assert luhn_valid("5500000000000004") is True   # MasterCard test
+        assert luhn_valid("378282246310005") is True    # Amex test
+        assert luhn_valid("30569309025904") is True     # Diners Club test
+
+    def test_luhn_invalid_random_digits(self):
+        assert luhn_valid("1234567890123456") is False
+        assert luhn_valid("0000000000000000") is True   # All zeros *is* Luhn-valid
+        assert luhn_valid("1111111111111111") is False
+
+    def test_luhn_different_lengths(self):
+        assert luhn_valid("49927398716") is True        # 11-digit known
+        assert luhn_valid("49927398717") is False       # Same with wrong check
+
+
+class TestCreditCardRegex:
+    """The new ``credit_card`` pattern must match multi-length candidates and
+    not match IPv4-looking strings or very short digit runs."""
+
+    def test_matches_16_digit_no_separator(self):
+        p = __import__("re").compile(r"\b(?:\d[ -]?){12,18}\d\b")
+        assert p.search("4111111111111111")
+
+    def test_matches_15_digit_amex(self):
+        p = __import__("re").compile(r"\b(?:\d[ -]?){12,18}\d\b")
+        assert p.search("378282246310005")
+
+    def test_matches_14_digit_diners(self):
+        p = __import__("re").compile(r"\b(?:\d[ -]?){12,18}\d\b")
+        assert p.search("30569309025904")
+
+    def test_matches_with_separators(self):
+        p = __import__("re").compile(r"\b(?:\d[ -]?){12,18}\d\b")
+        assert p.search("4111 1111 1111 1111")      # spaces
+        assert p.search("4111-1111-1111-1111")      # dashes
+
+    def test_does_not_match_ipv4(self):
+        p = __import__("re").compile(r"\b(?:\d[ -]?){12,18}\d\b")
+        # 192.168.1.1 has dots (not a separator) so should not match
+        assert p.search("192.168.1.1") is None
+
+    def test_does_not_match_short_runs(self):
+        p = __import__("re").compile(r"\b(?:\d[ -]?){12,18}\d\b")
+        assert p.search("12345") is None
+        assert p.search("123456789012") is None      # 12 digits, too short
+
+
+class TestScanWithLuhnFilter:
+    """Verify that Luhn-invalid credit_card matches are excluded from flags."""
+
+    def test_luhn_valid_credit_card_appears_in_flags(self, test_env):
+        scp = test_env["sensitive_config_path"]
+        _write_sensitive_config(scp, patterns={
+            "credit_card": r"\b(?:\d[ -]?){12,18}\d\b",
+        }, keywords={})
+
+        patterns, keywords = review_chats.load_sensitive_rules(str(scp))
+        chat = {
+            "title": "My card is 4111111111111111",
+            "turns": [],
+        }
+        fpath = test_env["chats_dir"] / "test.json"
+        with open(fpath, "w", encoding="utf-8") as f:
+            json.dump(chat, f)
+
+        flags = scan_chat_file(str(fpath), patterns, keywords)
+        assert "credit_card" in flags
+
+    def test_luhn_invalid_credit_card_excluded(self, test_env):
+        scp = test_env["sensitive_config_path"]
+        _write_sensitive_config(scp, patterns={
+            "credit_card": r"\b(?:\d[ -]?){12,18}\d\b",
+        }, keywords={})
+
+        patterns, keywords = review_chats.load_sensitive_rules(str(scp))
+        chat = {
+            "title": "My card is 1234567890123456",  # Luhn-invalid
+            "turns": [],
+        }
+        fpath = test_env["chats_dir"] / "test.json"
+        with open(fpath, "w", encoding="utf-8") as f:
+            json.dump(chat, f)
+
+        flags = scan_chat_file(str(fpath), patterns, keywords)
+        assert "credit_card" not in flags
+
+    def test_non_credit_card_unaffected(self, test_env):
+        scp = test_env["sensitive_config_path"]
+        _write_sensitive_config(scp, patterns={
+            "email": r"[\w.+-]+@[\w-]+\.[\w.-]+",
+            "credit_card": r"\b(?:\d[ -]?){12,18}\d\b",
+        }, keywords={})
+
+        patterns, keywords = review_chats.load_sensitive_rules(str(scp))
+        chat = {
+            "title": "My email is test@example.com and my invalid card is 1234567890123456",
+            "turns": [],
+        }
+        fpath = test_env["chats_dir"] / "test.json"
+        with open(fpath, "w", encoding="utf-8") as f:
+            json.dump(chat, f)
+
+        flags = scan_chat_file(str(fpath), patterns, keywords)
+        assert "email" in flags
+        assert "credit_card" not in flags
+
+    def test_luhn_filter_in_verbose_scan(self, test_env):
+        scp = test_env["sensitive_config_path"]
+        _write_sensitive_config(scp, patterns={
+            "credit_card": r"\b(?:\d[ -]?){12,18}\d\b",
+        }, keywords={})
+
+        patterns, keywords = review_chats.load_sensitive_rules(str(scp))
+        chat = {
+            "title": "Valid: 4111111111111111, Invalid: 1234567890123456",
+            "turns": [],
+        }
+        fpath = test_env["chats_dir"] / "test.json"
+        with open(fpath, "w", encoding="utf-8") as f:
+            json.dump(chat, f)
+
+        matches = scan_chat_file_verbose(str(fpath), patterns, keywords)
+        # Should only have the valid card in matches
+        assert "credit_card" in matches
+        assert len(matches["credit_card"]) == 1
+        assert "4111111111111111" in matches["credit_card"][0][1]
+
+
+class TestMaskChatContent:
+    """Unit tests for the pure function ``mask_chat_content()``."""
+
+    def test_credit_card_partial_mask(self):
+        patterns = {"credit_card": __import__("re").compile(r"\b(?:\d[ -]?){12,18}\d\b")}
+        chat = {"title": "Card: 4111111111111111", "turns": []}
+        masked, changed = mask_chat_content(chat, patterns, None)
+        assert changed is True
+        assert "[REDACTED:credit_card ...1111]" in masked["title"]
+
+    def test_email_partial_mask(self):
+        patterns = {"email": __import__("re").compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")}
+        chat = {"title": "Email: user@example.com", "turns": []}
+        masked, changed = mask_chat_content(chat, patterns, None)
+        assert changed is True
+        assert "[REDACTED:email domain=example.com]" in masked["title"]
+
+    def test_ipv4_full_mask(self):
+        patterns = {"ipv4": __import__("re").compile(r"\d+\.\d+\.\d+\.\d+")}
+        chat = {"title": "IP: 10.0.0.1", "turns": []}
+        masked, changed = mask_chat_content(chat, patterns, None)
+        assert changed is True
+        assert "[REDACTED:ipv4]" in masked["title"]
+        assert "10.0.0.1" not in masked["title"]
+
+    def test_keyword_full_mask(self):
+        chat = {"title": "My name is John", "turns": []}
+        keywords = {"name": ("John",)}
+        masked, changed = mask_chat_content(chat, None, keywords)
+        assert changed is True
+        assert "[REDACTED:name]" in masked["title"]
+        assert "John" not in masked["title"]
+
+    def test_fields_other_than_title_turn_untouched(self):
+        patterns = {"email": __import__("re").compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")}
+        chat = {
+            "conversation_id": "abc-123",
+            "source": "gemini_web",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "title": "Email: user@test.com",
+            "turns": [
+                {"role": "user", "turn_number": 1, "text": "Contact: user@test.com"},
+            ],
+        }
+        masked, changed = mask_chat_content(chat, patterns, None)
+        assert changed is True
+        assert masked["conversation_id"] == "abc-123"
+        assert masked["source"] == "gemini_web"
+        assert masked["created_at"] == "2026-01-01T00:00:00Z"
+        assert masked["updated_at"] == "2026-01-01T00:00:00Z"
+        assert masked["turns"][0]["role"] == "user"
+        assert masked["turns"][0]["turn_number"] == 1
+
+    def test_no_change_when_nothing_matches(self):
+        patterns = {"email": __import__("re").compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")}
+        chat = {"title": "Just a regular chat", "turns": []}
+        masked, changed = mask_chat_content(chat, patterns, None)
+        assert changed is False
+        assert masked["title"] == "Just a regular chat"
+
+    def test_mask_in_turn_text(self):
+        patterns = {"email": __import__("re").compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")}
+        chat = {
+            "title": "Hello",
+            "turns": [
+                {"role": "user", "text": "My email is test@example.com"},
+            ],
+        }
+        masked, changed = mask_chat_content(chat, patterns, None)
+        assert changed is True
+        assert "[REDACTED:email domain=example.com]" in masked["turns"][0]["text"]
+
+
+class TestMaskSensitiveIntegration:
+    """Integration tests for the full ``--mask-sensitive`` / ``--apply`` flow."""
+
+    def test_dry_run_no_writes(self, test_env):
+        """Preview mode should not modify files, DB, or manifest."""
+        conn = test_env["conn"]
+        cfg = test_env["cfg"]
+        chats_dir = test_env["chats_dir"]
+        manifest_path = test_env["manifest_path"]
+        scp = test_env["sensitive_config_path"]
+
+        _write_sensitive_config(scp, patterns={
+            "email": r"[\w.+-]+@[\w-]+\.[\w.-]+",
+        }, keywords={})
+
+        create_sample_chat(
+            chats_dir, conn, "c1", "Hello",
+            ["Contact test@example.com"],
+            "2026-07-18T10:00:00Z",
+        )
+        generate_or_refresh_manifest(conn, cfg)
+
+        # Mark c1 as reviewed YES, KEEP, with email flag
+        rows = read_and_validate_manifest(str(manifest_path))
+        rows[0]["reviewed"] = "YES"
+        rows[0]["action"] = "KEEP"
+        write_manifest_atomically(rows, str(manifest_path))
+
+        # Capture original file content
+        orig_content = (chats_dir / "c1.json").read_text()
+        orig_mtime = os.path.getmtime(chats_dir / "c1.json")
+
+        # Run preview
+        run_mask_sensitive(conn, cfg, apply_changes=False)
+
+        # Assert no changes
+        assert (chats_dir / "c1.json").read_text() == orig_content
+        assert os.path.getmtime(chats_dir / "c1.json") == orig_mtime
+        # Re-read manifest — should be unchanged
+        rows_after = read_and_validate_manifest(str(manifest_path))
+        assert rows_after[0]["reviewed"] == "YES"
+        assert rows_after[0]["flags"] == "email"
+        assert rows_after[0]["content_hash"] == rows[0]["content_hash"]
+
+    def test_apply_masks_and_updates_manifest(self, test_env):
+        conn = test_env["conn"]
+        cfg = test_env["cfg"]
+        chats_dir = test_env["chats_dir"]
+        manifest_path = test_env["manifest_path"]
+        scp = test_env["sensitive_config_path"]
+
+        _write_sensitive_config(scp, patterns={
+            "email": r"[\w.+-]+@[\w-]+\.[\w.-]+",
+        }, keywords={})
+
+        _, orig_fp = create_sample_chat(
+            chats_dir, conn, "c1", "Hello",
+            ["Contact test@example.com"],
+            "2026-07-18T10:00:00Z",
+        )
+        generate_or_refresh_manifest(conn, cfg)
+
+        rows = read_and_validate_manifest(str(manifest_path))
+        rows[0]["reviewed"] = "YES"
+        rows[0]["action"] = "KEEP"
+        write_manifest_atomically(rows, str(manifest_path))
+
+        # Apply
+        run_mask_sensitive(conn, cfg, apply_changes=True)
+
+        # File should be masked on disk
+        masked_content = (chats_dir / "c1.json").read_text()
+        assert "[REDACTED:email domain=example.com]" in masked_content
+        assert "test@example.com" not in masked_content
+
+        # Manifest: flags cleared, content_hash changed
+        refreshed = read_and_validate_manifest(str(manifest_path))
+        c1_row = next(r for r in refreshed if r["conversation_id"] == "c1")
+        assert c1_row["flags"] == ""
+        assert c1_row["content_hash"] != orig_fp
+        assert c1_row["reviewed"] == "YES"   # unchanged
+        assert c1_row["action"] == "KEEP"    # unchanged
+
+        # Mtime should match chat's updated_at, not wall-clock
+        new_mtime = os.path.getmtime(chats_dir / "c1.json")
+        chat_ts = datetime.fromisoformat("2026-07-18T10:00:00Z").timestamp()
+        assert abs(new_mtime - chat_ts) < 1.0
+
+    def test_only_yes_keep_flagged_touched(self, test_env):
+        """Rows that are NO, DEL, or have no flags should be untouched."""
+        conn = test_env["conn"]
+        cfg = test_env["cfg"]
+        chats_dir = test_env["chats_dir"]
+        manifest_path = test_env["manifest_path"]
+        scp = test_env["sensitive_config_path"]
+
+        _write_sensitive_config(scp, patterns={
+            "email": r"[\w.+-]+@[\w-]+\.[\w.-]+",
+        }, keywords={})
+
+        # c1: YES, KEEP, flagged → should be masked
+        create_sample_chat(chats_dir, conn, "c1", "Chat one", ["test@example.com"], "2026-07-18T10:00:00Z")
+        # c2: NO (unreviewed) → not touched
+        create_sample_chat(chats_dir, conn, "c2", "Chat two", ["test2@example.com"], "2026-07-19T10:00:00Z")
+        # c3: YES, DEL → not touched
+        create_sample_chat(chats_dir, conn, "c3", "Chat three", ["test3@example.com"], "2026-07-20T10:00:00Z")
+
+        generate_or_refresh_manifest(conn, cfg)
+        rows = read_and_validate_manifest(str(manifest_path))
+        for r in rows:
+            if r["conversation_id"] == "c1":
+                r["reviewed"] = "YES"
+                r["action"] = "KEEP"
+            elif r["conversation_id"] == "c3":
+                r["reviewed"] = "YES"
+                r["action"] = "DEL"
+            # c2 stays NO
+        write_manifest_atomically(rows, str(manifest_path))
+
+        c2_content_before = (chats_dir / "c2.json").read_text()
+        c3_content_before = (chats_dir / "c3.json").read_text()
+
+        run_mask_sensitive(conn, cfg, apply_changes=True)
+
+        # c2 and c3 unchanged on disk
+        assert (chats_dir / "c2.json").read_text() == c2_content_before
+        assert (chats_dir / "c3.json").read_text() == c3_content_before
+
+        # c1 masked
+        assert "[REDACTED:email" in (chats_dir / "c1.json").read_text()
+
+    def test_idempotent_second_run(self, test_env):
+        """Running --apply twice is a no-op the second time (no candidates)."""
+        conn = test_env["conn"]
+        cfg = test_env["cfg"]
+        chats_dir = test_env["chats_dir"]
+        manifest_path = test_env["manifest_path"]
+        scp = test_env["sensitive_config_path"]
+
+        _write_sensitive_config(scp, patterns={
+            "email": r"[\w.+-]+@[\w-]+\.[\w.-]+",
+        }, keywords={})
+
+        create_sample_chat(chats_dir, conn, "c1", "Hello", ["test@example.com"], "2026-07-18T10:00:00Z")
+        generate_or_refresh_manifest(conn, cfg)
+        rows = read_and_validate_manifest(str(manifest_path))
+        rows[0]["reviewed"] = "YES"
+        rows[0]["action"] = "KEEP"
+        write_manifest_atomically(rows, str(manifest_path))
+
+        # First apply
+        run_mask_sensitive(conn, cfg, apply_changes=True)
+
+        # Second apply — should find no candidates (flags now empty)
+        refreshed = read_and_validate_manifest(str(manifest_path))
+        c1_row = next(r for r in refreshed if r["conversation_id"] == "c1")
+        assert c1_row["flags"] == ""
+
+        # Masked content still there (not double-masked)
+        masked_content = (chats_dir / "c1.json").read_text()
+        assert masked_content.count("[REDACTED:email") == 1

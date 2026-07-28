@@ -130,11 +130,11 @@ This file doesn't ship as `config/sensitive_patterns.json` directly —
 copy the template first:
 
 ```bash
-cp config/sensitive_patterns_example.json config/sensitive_patterns.json
+cp config/sensitive_patterns.example.json config/sensitive_patterns.json
 ```
 
 Then edit your copy. Like `topics.json`, the template
-(`sensitive_patterns_example.json`) is tracked in git; your actual
+(`sensitive_patterns.example.json`) is tracked in git; your actual
 `sensitive_patterns.json` is gitignored, since — unlike the taxonomy — its
 whole purpose is to hold things that are personal to you (your name, your
 address, family members' names) and must never end up in a public repo or
@@ -164,10 +164,35 @@ runs with no scanning at all — this file is entirely optional.
 | `keywords` | `{alias: array of literal strings}`. Matched as a plain case-insensitive substring — not a regex — so you can safely include things like `+` or `.` in a name or address without escaping them. Each alias maps to a *list* so one alias can cover multiple spellings/variants (e.g. a nickname and a full name both under `family_name`). |
 
 Both sections are optional — you can have only `patterns`, only `keywords`,
-or both. `config/sensitive_patterns_example.json` in this repo has a fuller
+or both. `config/sensitive_patterns.example.json` in this repo has a fuller
 example covering email, credit card, IPv4/IPv6 addresses, and a range of
 personal-info keyword categories (name, phone, home address, birth date,
 etc.) as a starting point.
+
+### Luhn validation for `credit_card`
+
+The `credit_card` alias has a **Luhn algorithm** validator applied automatically
+at scan time. The pattern (`\b(?:\d[ -]?){12,18}\d\b`) is deliberately loose to
+match 13–19 digit numbers with common separators; the Luhn check filters
+false positives (e.g. random long numbers that happen to match the digit pattern).
+A matched value only appears in `flags` if it passes the Luhn check. This means
+editing the `credit_card` regex requires `--scan-sensitive` to retroactively
+re-validate previously flagged chats.
+
+### Masking behavior
+
+When you run `review_chats.py --mask-sensitive --apply`, matched spans are
+redacted in the chat JSON file as follows:
+
+| Alias | Mask format | Rationale |
+|---|---|---|
+| `credit_card` | `[REDACTED:credit_card ...XXXX]` (last 4 digits visible) | Low sensitivity — last 4 digits are routinely shared |
+| `email` | `[REDACTED:email domain=...]` (domain visible) | Low sensitivity — domain alone is rarely identifying |
+| Everything else (ipv4, ipv6, and all keyword aliases) | `[REDACTED:{alias}]` (full redaction) | The exact match is either sensitive (IP) or literal PII (keywords) |
+
+**Keyword aliases must never be listed in as partial-mask.** They represent
+exact literal PII you configured, and leaving any part visible would defeat
+the purpose of redaction.
 
 ### What appears where — aliases only, never values
 
@@ -178,6 +203,15 @@ actual matched text from your chats, are never written anywhere except back
 to your own terminal — and only then if you explicitly ask for it via
 `review_chats.py --show-sensitive <id>` or `--show-sensitive-all` (see
 [CLI.md](CLI.md#reviewing-extracted-chats)).
+
+### One exception: masking's partial reveal
+
+`--mask-sensitive --apply` writes `[REDACTED:credit_card ...1234]` and
+`[REDACTED:email domain=example.com]` — the one place a fragment of the
+actual value is kept, not just the alias. Both are established
+safe-to-show conventions (a card's last 4 digits, an email's domain), not
+the sensitive value itself. Every other alias, including all
+keyword-based matches, becomes a bare `[REDACTED:alias]`.
 
 ### Editing this file doesn't retroactively re-flag old chats
 
@@ -195,6 +229,19 @@ python review_chats.py --scan-sensitive
 This is a deliberate trade-off — the alternative (re-scanning your entire
 chat history on every run) would defeat the point of the incremental design
 for what's usually an infrequent edit.
+
+### Built-in match validators
+
+A regex alone can't tell a real credit card from a random 16-digit
+string. For one well-known alias, `review_chats.py` runs a second,
+hardcoded check after the regex matches:
+
+| Alias | Check |
+|---|---|
+| `credit_card` | Luhn checksum |
+
+Not configurable from `sensitive_patterns.json` — tied to the alias name
+in code. Renaming `credit_card` in your config loses the check.
 
 ---
 
