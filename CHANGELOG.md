@@ -6,6 +6,21 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-07-29
+
+### Added
+
+- **`ASSISTANT_INSTRUCTIONS.md` — AI-guided walkthrough for the entire
+  pipeline** ([#28](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/28)):
+  new file that users can attach as context to any AI coding assistant
+  (Copilot, Claude, ChatGPT, etc.) for a step-by-step guided setup and
+  usage walkthrough — no need to read through all the docs first. Covers
+  every pipeline stage, environment setup, config, review flow, masking,
+  common troubleshooting, and plugin recommendations.
+- **README Quick Start callout linking to `ASSISTANT_INSTRUCTIONS.md`**:
+  visible signpost in the Quick Start section so new users immediately
+  see the guided-walkthrough option.
+
 ## [1.3.0] - 2026-07-29
 
 ### Added
