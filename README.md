@@ -33,7 +33,7 @@ Every conversation lands as a markdown note with full text and frontmatter — n
 - **SQLite-backed state** — classifications, chat metadata, and the ignore list live in one queryable DB, synced incrementally via mtime + content-hash pre-filtering
 - **Smart staleness detection** — catches not just text changes but classification-outcome transitions too (unclassified → classified, error → ok), so nothing silently goes stale
 - **Safe, reversible pruning** — orphan detection with a full cascade delete and a safety threshold that blocks accidental mass-deletion
-- **Editable review manifest with sensitive-info flagging** — a plain-CSV pass before classification lets you skim titles, mark chats `KEEP`/`DEL`, and get automatic regex + keyword flags (emails, phone numbers, names, addresses) surfaced without opening a single chat file
+- **Editable review manifest with sensitive-info flagging and masking** — a plain-CSV pass before classification lets you skim titles, mark chats `KEEP`/`DEL`, and get automatic regex + keyword flags, plus optional in-place redaction of matched content for chats you want to keep
 - **Human-reviewable at every stage** — chats land as plain JSON you can open, edit, or delete before anything is sent to an LLM or written to the vault
 - **Local-first, cloud-optional** — works with any OpenAI-compatible endpoint, so your history never has to leave your machine unless you choose otherwise
 - **Strict three-tier graph** — Category → Topic → Conversation, enforced consistently, so the graph view stays legible instead of turning into a hairball
@@ -50,6 +50,8 @@ The classifier needs any endpoint that speaks the OpenAI-style `/v1/chat/complet
 ---
 
 ## Quick Start
+
+> **Prefer a guided walkthrough?** Attach [`ASSISTANT_INSTRUCTIONS.md`](ASSISTANT_INSTRUCTIONS.md) as context to any AI coding assistant (Copilot, Claude, ChatGPT, etc.) and tell it what you want to do. It'll check what's already been set up and guide you step by step — no need to read through all the docs first.
 
 ### 1. Prerequisites
 
