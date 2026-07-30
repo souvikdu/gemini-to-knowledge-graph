@@ -6,6 +6,69 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-07-31
+
+### Added
+
+- **`-y`/`--yes` flag for `review_chats.py --mark-reviewed`** ([#30](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/30)):
+  allows skipping the interactive confirmation prompt, useful for scripting
+  and CI. Documented in `docs/CLI.md` and the module docstring.
+- **`validate_review_delete_file()` unit tests** ([#30](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/30)):
+  7 new tests in `TestValidateReviewDeleteFile` covering happy path, path
+  traversal, non-JSON extension, conversation_id mismatch, malformed JSON,
+  missing DB row, and missing file on disk.
+
+### Fixed
+
+- **Reverted ruff floating-dependency regression** ([#30](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/30)):
+  re-pinned `ruff==0.15.22` and restored the Dependabot `ignore` rule,
+  preventing future ruff releases from silently breaking CI.
+- **README pipeline and Quick Start** ([#30](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/30)):
+  pipeline diagram updated to the correct 6-stage
+  `Extract → Review → Prune → Mask → Classify → Vault`; Quick Start now
+  includes `prune_chats.py --prune` so DEL marks from review have a visible
+  next step.
+- **`docs/CONTRIBUTING.md` broken self-links** ([#30](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/30)):
+  three internal links used a `docs/` prefix that resolved to nonexistent
+  `docs/docs/...` paths; dropped the prefix for correct same-directory
+  resolution.
+- **`docs/ARCHITECTURE.md` stale project tree** ([#30](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/30)):
+  `CONTRIBUTING.md` was listed at repo root (actually at `docs/CONTRIBUTING.md`);
+  nonexistent `tests/extractors/` directory was listed. Pipeline diagram
+  also updated to the 6-stage version.
+- **`ASSISTANT_INSTRUCTIONS.md` nonexistent reference** ([#30](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/30)):
+  dropped the link to `AGENTS.md` which never existed in the repo.
+- **`.env.example` stale comment** ([#30](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/30)):
+  referenced `extract_gemini_chat.py` instead of the current
+  `extractors/gemini.py`.
+- **Redundant import in `extractors/gemini.py`** ([#30](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/30)):
+  removed duplicate `from datetime import datetime, timezone` inside `main()`
+  (already imported at module scope).
+- **Misleading orphan/DEL log line in `prune_chats.py`** ([#30](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/30)):
+  when a chat is both orphaned and marked `DEL`, the log now clearly says
+  the file is missing but will still be pruned as an orphan, rather than
+  generically reporting "skipping."
+- **`hash_changed` short-circuit on empty hash** ([#30](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/30)):
+  changed from `bool(old_hash and new_hash and old_hash != new_hash)` to
+  `old_hash != new_hash` so content changes aren't missed when a manifest
+  row has a blank `content_hash`.
+- **`test_prune_chats.py` manifest fixtures used wrong column name**
+  ([#30](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/30)):
+  all fixture rows used `"created_at"` instead of `"updated_at"`, silently
+  writing empty timestamp cells.
+
+### Changed
+
+- **`resolve_note_action()` returns pre-computed signature**
+  ([#30](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/30)):
+  `resolve_note_action()` now returns a 3-tuple including the
+  `note_signature()` hash, so the caller in `_process_conversations()`
+  doesn't recompute it when building the frontmatter. Updated all call
+  sites in `tests/test_obsidian_layout.py`.
+- **Stripped `ruff.toml`** ([#30](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/30)):
+  removed the `[lint]` section with rule ignores — unnecessary with a pinned
+  ruff version.
+
 ## [1.3.1] - 2026-07-29
 
 ### Added

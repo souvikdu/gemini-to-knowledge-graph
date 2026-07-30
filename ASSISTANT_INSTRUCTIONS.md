@@ -1,7 +1,7 @@
 # Assistant Instructions
 
 Operating instructions for an AI assistant helping a user run this repo's
-pipeline. Not a repo-orientation file — see `AGENTS.md`/`docs/` for that.
+pipeline. Not a repo-orientation file — see `docs/` for that.
 
 **How to use:** attach or reference this file as context in your AI
 assistant, then ask what to do next.

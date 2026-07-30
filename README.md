@@ -11,8 +11,8 @@ You've had hundreds of conversations with AI — technical debugging at 2am, lea
 **gemini-to-knowledge-graph is a Gemini chat exporter** that pulls your conversation history out of Gemini's walled garden, classifies each conversation against a topic taxonomy using an LLM (local or cloud), and builds an Obsidian vault where everything you've explored is actually connected — category leads to topic leads to conversation.
 
 ```
-Extract ──> [Review] ──> Classify ──> Vault
-             optional
+Extract ──> [Review] ──> [Prune] ──> [Mask] ──> Classify ──> Vault
+             optional stages, in the order shown
 ```
 
 **Just want your chats in Obsidian, no classification?** Run Stage 1 + Stage 3 only:

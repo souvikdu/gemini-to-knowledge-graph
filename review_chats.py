@@ -5,7 +5,8 @@ review manifest (review/chats_to_review.csv).
 Usage:
     python review_chats.py                  # Refresh manifest (auto-scan new/changed)
     python review_chats.py --scan-sensitive # Force full sensitive scan on all chats (required after updating sensitive_patterns.json)
-    python review_chats.py --mark-reviewed  # Confirm and mark all unreviewed (NO or RE-REVIEW) as YES
+    python review_chats.py --mark-reviewed   # Confirm and mark all unreviewed (NO or RE-REVIEW) as YES
+    python review_chats.py --mark-reviewed -y  # Same, skip confirmation (useful for scripting)
     python review_chats.py --show-sensitive <conversation_id>  # Show sensitive matches for one chat
     python review_chats.py --show-sensitive-all               # Show sensitive matches for all flagged chats
     python review_chats.py --mask-sensitive                   # Preview which reviewed KEEP chats would be masked
@@ -495,7 +496,7 @@ def generate_or_refresh_manifest(conn, cfg: dict, scan_sensitive: bool = False):
             old_hash = old_row.get("content_hash", "")
 
             # Check content hash mismatch
-            hash_changed = bool(old_hash and new_hash and old_hash != new_hash)
+            hash_changed = old_hash != new_hash
 
             updated_row = dict(old_row)
             updated_row["updated_at"] = db_chat.get("updated_at") or ""
@@ -557,8 +558,11 @@ def generate_or_refresh_manifest(conn, cfg: dict, scan_sensitive: bool = False):
     )
 
 
-def mark_all_reviewed():
-    """Interactively collapse all NO and RE-REVIEW states to YES."""
+def mark_all_reviewed(yes_flag=False):
+    """Collapse all NO and RE-REVIEW states to YES.
+    
+    If yes_flag is True, skips the interactive confirmation prompt.
+    """
     if not os.path.exists(MANIFEST_PATH):
         die(f"Review manifest missing at '{MANIFEST_PATH}'. Run 'python review_chats.py' first.")
 
@@ -582,12 +586,16 @@ def mark_all_reviewed():
     log(f"  - Already reviewed (YES):   {yes_count}")
     log(f"  - Total to mark as YES:     {unreviewed_total}")
 
-    try:
-        ans = input(f"\nMark all {unreviewed_total} unreviewed chat(s) as YES? [y/N]: ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        ans = "n"
+    if yes_flag:
+        confirm = True
+    else:
+        try:
+            ans = input(f"\nMark all {unreviewed_total} unreviewed chat(s) as YES? [y/N]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            ans = "n"
+        confirm = ans in ("y", "yes")
 
-    if ans in ("y", "yes"):
+    if confirm:
         for r in rows:
             r["reviewed"] = "YES"
         write_manifest_atomically(rows, MANIFEST_PATH)
@@ -911,7 +919,7 @@ def main():
         return
 
     if "--mark-reviewed" in flags:
-        mark_all_reviewed()
+        mark_all_reviewed(yes_flag="-y" in flags)
         return
 
     mask_sensitive = "--mask-sensitive" in flags

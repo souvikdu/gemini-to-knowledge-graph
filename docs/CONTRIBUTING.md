@@ -5,9 +5,9 @@ Solo-maintained, git-clone-distributed personal project — keep changes small a
 ## Before you start
 
 - For anything beyond a small fix, open an issue first. Scope is intentionally
-  narrow — check [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md) for what's
+  narrow — check [DESIGN_NOTES.md](DESIGN_NOTES.md) for what's
   already been considered and rejected.
-- For structural changes, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first.
+- For structural changes, read [ARCHITECTURE.md](ARCHITECTURE.md) first.
 
 ## Setup
 
@@ -28,9 +28,9 @@ contract from `chats/*.json` — no changes needed there.
 
 1. Add `extractors/<source>.py`
 2. Write output via `extractors/base.py`'s `upsert_chat_and_file()`
-   (contract: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#json-contract))
+   (contract: [ARCHITECTURE.md](ARCHITECTURE.md#json-contract))
 3. Prefix `conversation_id` with the source name (`gemini_`, `chatgpt_`, etc.)
-4. Add tests under `tests/extractors/`
+4. Add tests in `tests/` named `test_<source>.py` (flat directory, matching existing convention)
 
 ## Making changes
 

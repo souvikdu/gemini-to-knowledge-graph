@@ -186,13 +186,14 @@ def note_signature(chat, rec):
 def resolve_note_action(cid, chat, rec, existing_vault, used_filenames):
     """Decide whether to skip, rewrite, or create a conversation note.
     Pure — no file I/O — so it's directly unit testable.
-    Returns (action, notename) where action is 'skip' | 'rewrite' | 'new'."""
+    Returns (action, notename, signature) where action is 'skip' | 'rewrite' | 'new'
+    and signature is the note_signature hash (reused by the caller to avoid recomputation)."""
     current_sig = note_signature(chat, rec)
     if cid in existing_vault:
         existing_name, existing_sig = existing_vault[cid]
         if existing_sig and existing_sig == current_sig:
-            return "skip", existing_name
-        return "rewrite", existing_name
+            return "skip", existing_name, current_sig
+        return "rewrite", existing_name, current_sig
     base = make_safe_filename(chat.get("title") or "Untitled") or "Untitled"
     notename = base
     used_lower = {f.lower() for f in used_filenames}
@@ -200,7 +201,7 @@ def resolve_note_action(cid, chat, rec, existing_vault, used_filenames):
     while notename.lower() in used_lower:
         notename = f"{base}-{n}"
         n += 1
-    return "new", notename
+    return "new", notename, current_sig
 
 
 # ── Vault preparation ────────────────────────────────────────────────────────
@@ -408,7 +409,7 @@ def _process_conversations(ctx):
 
         cid_to_date[cid] = chat.get("updated_at", "")
 
-        action, notename = resolve_note_action(cid, chat, rec, existing_vault, used_filenames)
+        action, notename, current_sig = resolve_note_action(cid, chat, rec, existing_vault, used_filenames)
         if action == "skip":
             skipped_count += 1
             continue
@@ -472,7 +473,7 @@ turn_count: {len(turns)}
 word_count: {word_count}
 categories: [{', '.join(yaml_str(c) for c in categories_for_chat)}]
 summary: {yaml_str(summary_text)}
-note_signature: {yaml_str(note_signature(chat, rec))}
+note_signature: {yaml_str(current_sig)}
 node_size: {conv_size}
 {yaml_tag_block(tags)}
 ---
