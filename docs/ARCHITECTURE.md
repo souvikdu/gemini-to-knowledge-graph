@@ -4,8 +4,8 @@ For *why* the pipeline is shaped this way, see [DESIGN_NOTES.md](DESIGN_NOTES.md
 This doc covers *what's actually in the codebase*.
 
 ```
-Extract ──> [Review] ──> Classify ──> Vault
-             optional
+Extract ──> [Review] ──> [Prune] ──> [Mask] ──> Classify ──> Vault
+             optional stages, in the order shown
 ```
 
 ---
@@ -234,6 +234,7 @@ gemini-to-knowledge-graph/
 │   ├── CONFIGURATION.md            # Full config reference
 │   ├── CLI.md                      # Flags, resuming, review, pruning
 │   ├── ARCHITECTURE.md             # This file
+│   ├── CONTRIBUTING.md             # Contributing guide
 │   ├── DESIGN_NOTES.md             # Why the pipeline is shaped this way
 │   └── images/
 │       └── graph-preview.png
@@ -248,18 +249,15 @@ gemini-to-knowledge-graph/
 │   ├── conftest.py
 │   ├── test_common.py
 │   ├── test_classify_chats.py
+│   ├── test_extract_gemini_chat.py
 │   ├── test_obsidian_layout.py
 │   ├── test_prune_chats.py
-│   ├── test_review_chats.py
-│   └── extractors/
-│       ├── test_base.py
-│       └── test_gemini.py
+│   └── test_review_chats.py
 ├── chat_topics.db                 # SQLite: classifications + ignore list (gitignored)
 ├── .env.example
 ├── .gitignore
 ├── pytest.ini
 ├── requirements.txt
 ├── requirements-dev.txt
-├── CONTRIBUTING.md
 └── README.md
 ```

@@ -255,7 +255,10 @@ def main():
             cand["reasons"].add("marked DEL")
             cand["file_to_delete"] = valid_file
         else:
-            log(f"  ⚠ Review-marked chat '{cid}' JSON file validation failed — skipping.")
+            if cid in orphans:
+                log(f"  ⚠ Review-marked chat '{cid}' — file already missing (will still be pruned as orphan).")
+            else:
+                log(f"  ⚠ Review-marked chat '{cid}' JSON file validation failed — skipping.")
 
     if manifest_rows is not None:
         unreviewed_count = sum(1 for r in manifest_rows if r["reviewed"] in ("NO", "RE-REVIEW"))

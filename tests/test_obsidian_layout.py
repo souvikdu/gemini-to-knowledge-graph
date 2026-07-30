@@ -94,7 +94,7 @@ class TestResolveNoteAction:
 
     def test_brand_new_cid_returns_action_new(self, make_chat):
         chat = make_chat(cid="new_cid", title="My Chat")
-        action, notename = resolve_note_action("new_cid", chat, None, {}, set())
+        action, notename, _ = resolve_note_action("new_cid", chat, None, {}, set())
         assert action == "new"
         # Filename derived from title via make_safe_filename
         assert notename == make_safe_filename("My Chat")
@@ -102,7 +102,7 @@ class TestResolveNoteAction:
     def test_filename_collision_gets_numeric_suffix(self, make_chat):
         chat = make_chat(cid="new_cid", title="Shared Title")
         used = {"Shared Title"}
-        action, notename = resolve_note_action("new_cid", chat, None, {}, used)
+        action, notename, _ = resolve_note_action("new_cid", chat, None, {}, used)
         assert action == "new"
         assert notename == "Shared Title-2"
 
@@ -111,7 +111,7 @@ class TestResolveNoteAction:
         rec = {"status": "ok", "category": ["Programming"], "topic": ["Python"], "summary": "Nice"}
         sig = note_signature(chat, rec)
         existing_vault = {"existing": ("Keep Me", sig)}
-        action, notename = resolve_note_action("existing", chat, rec, existing_vault, {"Keep Me"})
+        action, notename, _ = resolve_note_action("existing", chat, rec, existing_vault, {"Keep Me"})
         assert action == "skip"
         assert notename == "Keep Me"
 
@@ -126,7 +126,7 @@ class TestResolveNoteAction:
         existing_vault = {"editable": ("My Chat", orig_sig)}
 
         new_chat = make_chat(cid="editable", title="My Chat", turns=new_turns)
-        action, notename = resolve_note_action("editable", new_chat, rec, existing_vault, {"My Chat"})
+        action, notename, _ = resolve_note_action("editable", new_chat, rec, existing_vault, {"My Chat"})
         assert action == "rewrite"
         assert notename == "My Chat"  # same filename, not a new file
 
@@ -143,7 +143,7 @@ class TestResolveNoteAction:
 
         # Second pass: same chat text, but now a classification exists
         rec = {"status": "ok", "category": ["Programming"], "topic": ["Python"], "summary": "Now classified"}
-        action, notename = resolve_note_action(
+        action, notename, _ = resolve_note_action(
             "bug_test", chat, rec, existing_vault, {"Bug Chat"}
         )
         assert action == "rewrite", (
@@ -162,7 +162,7 @@ class TestResolveNoteAction:
         existing_vault = {"retry_me": ("Retry Chat", sig_error)}
 
         rec_ok = {"status": "ok", "category": ["Programming"], "topic": ["Python"], "summary": "Fixed"}
-        action, notename = resolve_note_action(
+        action, notename, _ = resolve_note_action(
             "retry_me", chat, rec_ok, existing_vault, {"Retry Chat"}
         )
         assert action == "rewrite"
@@ -170,7 +170,7 @@ class TestResolveNoteAction:
 
     def test_unknown_cid_with_empty_title_uses_unnamed(self, make_chat):
         chat = make_chat(cid="no_title", title="")
-        action, notename = resolve_note_action("no_title", chat, None, {}, set())
+        action, notename, _ = resolve_note_action("no_title", chat, None, {}, set())
         assert action == "new"
         assert notename != ""
 

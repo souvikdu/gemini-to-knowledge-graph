@@ -13,6 +13,7 @@ import prune_chats
 import review_chats
 from common import chat_fingerprint, get_db_connection, upsert_chat
 from prune_chats import main as prune_main
+from prune_chats import validate_review_delete_file
 from review_chats import write_manifest_atomically
 
 
@@ -124,7 +125,7 @@ class TestPruneIntegration:
         # Create manifest marking c2 as DEL
         rows = [
             {
-                "created_at": "2026-07-18T10:00:00Z",
+                "updated_at": "2026-07-18T10:00:00Z",
                 "source": "gemini_web",
                 "conversation_id": "c1",
                 "content_hash": fp1,
@@ -134,7 +135,7 @@ class TestPruneIntegration:
                 "flags": "",
             },
             {
-                "created_at": "2026-07-19T10:00:00Z",
+                "updated_at": "2026-07-19T10:00:00Z",
                 "source": "gemini_web",
                 "conversation_id": "c2",
                 "content_hash": fp2,
@@ -175,7 +176,7 @@ class TestPruneIntegration:
         # Manifest contains c1 (KEEP) and c_stale (DEL) which isn't in DB
         rows = [
             {
-                "created_at": "2026-07-18T10:00:00Z",
+                "updated_at": "2026-07-18T10:00:00Z",
                 "source": "gemini_web",
                 "conversation_id": "c1",
                 "content_hash": fp1,
@@ -185,7 +186,7 @@ class TestPruneIntegration:
                 "flags": "",
             },
             {
-                "created_at": "2026-07-19T10:00:00Z",
+                "updated_at": "2026-07-19T10:00:00Z",
                 "source": "gemini_web",
                 "conversation_id": "c_stale",
                 "content_hash": "stalehash",
@@ -215,7 +216,7 @@ class TestPruneIntegration:
 
         rows = [
             {
-                "created_at": "2026-07-18T10:00:00Z",
+                "updated_at": "2026-07-18T10:00:00Z",
                 "source": "gemini_web",
                 "conversation_id": "c1",
                 "content_hash": fp1,
@@ -232,3 +233,144 @@ class TestPruneIntegration:
 
         captured = capsys.readouterr()
         assert "flags: email,phone" in captured.out
+
+
+# ── validate_review_delete_file ──────────────────────────────────────────
+
+
+class TestValidateReviewDeleteFile:
+    """Direct unit tests for prune_chats.validate_review_delete_file().
+
+    This function does security-relevant validation (path traversal prevention,
+    file extension check, conversation_id cross-match) before any deletion
+    happens — so it needs direct coverage rather than just integration coverage.
+    """
+
+    def test_happy_path(self, prune_env):
+        """Valid file with matching conversation_id returns the file path."""
+        conn = prune_env["conn"]
+        chats_dir = prune_env["chats_dir"]
+
+        add_test_chat(
+            chats_dir, conn, "c1", "Test",
+            ["Hello"], "2026-07-18T10:00:00Z",
+            filename="valid.json", write_file=True,
+        )
+
+        result = validate_review_delete_file("c1", conn, str(chats_dir))
+        expected = os.path.abspath(os.path.join(str(chats_dir), "valid.json"))
+        assert result == expected
+
+    def test_path_traversal_attempt(self, prune_env):
+        """source_file with ../ that would escape chats_dir returns None."""
+        conn = prune_env["conn"]
+        chats_dir = prune_env["chats_dir"]
+
+        # Create a file outside chats_dir to simulate where traversal would point
+        outside_file = prune_env["tmp_path"] / "outside.json"
+        with open(outside_file, "w") as f:
+            json.dump({"conversation_id": "c_traversal"}, f)
+
+        # But the DB says it's inside chats_dir/../outside.json
+        fp = chat_fingerprint({"dummy": True})
+        upsert_chat(conn, {
+            "conversation_id": "c_traversal",
+            "source": "gemini_web",
+            "title": "Traversal Attempt",
+            "content_hash": fp,
+            "source_file": "../outside.json",
+            "file_mtime": 0.0,
+            "created_at": "2026-07-18T10:00:00Z",
+        })
+
+        result = validate_review_delete_file("c_traversal", conn, str(chats_dir))
+        assert result is None
+
+    def test_non_json_source_file(self, prune_env):
+        """source_file ending in .txt (not .json) returns None."""
+        conn = prune_env["conn"]
+        chats_dir = prune_env["chats_dir"]
+
+        fp = chat_fingerprint({"dummy": True})
+        upsert_chat(conn, {
+            "conversation_id": "c_txt",
+            "source": "gemini_web",
+            "title": "Not JSON",
+            "content_hash": fp,
+            "source_file": "note.txt",
+            "file_mtime": 0.0,
+            "created_at": "2026-07-18T10:00:00Z",
+        })
+
+        (chats_dir / "note.txt").write_text("not json")
+        result = validate_review_delete_file("c_txt", conn, str(chats_dir))
+        assert result is None
+
+    def test_conversation_id_mismatch(self, prune_env):
+        """File's embedded conversation_id differs from the cid arg → None."""
+        conn = prune_env["conn"]
+        chats_dir = prune_env["chats_dir"]
+
+        chat_data = {"conversation_id": "c_other", "title": "Wrong ID", "turns": []}
+        with open(chats_dir / "mismatch.json", "w") as f:
+            json.dump(chat_data, f)
+
+        fp = chat_fingerprint(chat_data)
+        upsert_chat(conn, {
+            "conversation_id": "c_mismatch",
+            "source": "gemini_web",
+            "title": "Mismatch",
+            "content_hash": fp,
+            "source_file": "mismatch.json",
+            "file_mtime": os.path.getmtime(chats_dir / "mismatch.json"),
+            "created_at": "2026-07-18T10:00:00Z",
+        })
+
+        result = validate_review_delete_file("c_mismatch", conn, str(chats_dir))
+        assert result is None
+
+    def test_malformed_json(self, prune_env):
+        """Unparseable JSON content returns None without raising."""
+        conn = prune_env["conn"]
+        chats_dir = prune_env["chats_dir"]
+
+        fp = chat_fingerprint({"dummy": True})
+        upsert_chat(conn, {
+            "conversation_id": "c_bad_json",
+            "source": "gemini_web",
+            "title": "Bad JSON",
+            "content_hash": fp,
+            "source_file": "bad.json",
+            "file_mtime": 0.0,
+            "created_at": "2026-07-18T10:00:00Z",
+        })
+
+        (chats_dir / "bad.json").write_text("{invalid json!!!}")
+        result = validate_review_delete_file("c_bad_json", conn, str(chats_dir))
+        assert result is None
+
+    def test_missing_db_row(self, prune_env):
+        """No DB row for the given cid returns None."""
+        conn = prune_env["conn"]
+        chats_dir = prune_env["chats_dir"]
+        result = validate_review_delete_file("nonexistent", conn, str(chats_dir))
+        assert result is None
+
+    def test_file_does_not_exist_on_disk(self, prune_env):
+        """DB row exists but file is missing from disk returns None."""
+        conn = prune_env["conn"]
+        chats_dir = prune_env["chats_dir"]
+
+        fp = chat_fingerprint({"dummy": True})
+        upsert_chat(conn, {
+            "conversation_id": "c_missing_file",
+            "source": "gemini_web",
+            "title": "Missing File",
+            "content_hash": fp,
+            "source_file": "ghost.json",
+            "file_mtime": 0.0,
+            "created_at": "2026-07-18T10:00:00Z",
+        })
+
+        result = validate_review_delete_file("c_missing_file", conn, str(chats_dir))
+        assert result is None

@@ -395,7 +395,6 @@ async def main():
             "WHERE source = 'gemini_web' AND chat_type = 'regular'"
         ).fetchone()
         cp_regular = row_r["max_mtime"] if row_r and row_r["max_mtime"] is not None else last_ts_regular
-        from datetime import datetime, timezone
         state = {
             "last_timestamp_regular": cp_regular,
             "last_checkpoint_at": datetime.now(timezone.utc).isoformat(),
