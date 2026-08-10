@@ -14,6 +14,7 @@ Obsidian_Vault/
 config/config.json
 config/topics.json
 config/sensitive_patterns.json
+config/embedding.json
 review/*.csv
 checkpoint/
 

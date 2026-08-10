@@ -1,0 +1,24 @@
+{
+  "api": {
+    "url": "http://localhost:8081/v1/embeddings",
+    "model": "qwen3-embedding:0.6b",
+    "timeout": 60,
+    "batch_size": 32
+  },
+  "top_k": 5,
+  "min_similarity": 0.65,
+  "text_prep": {
+    "strip_prefixes": ["This conversation", "The user"]
+  },
+  "paths": {
+    "vault_dir": "Similarity_Vault"
+  },
+  "node_sizing": {
+    "conversation": 8
+  },
+  "obsidian": {
+    "colors": {
+      "conversation": { "a": 1, "rgb": 6737151 }
+    }
+  }
+}
