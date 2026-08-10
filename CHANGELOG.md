@@ -6,6 +6,14 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Embedding graph foundation** ([#32](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/32)):
+  `common.py` gains `embeddings` and `similarity_links` tables,
+  `load_embedding_config()`, float32 vector pack/unpack helpers, and CRUD
+  helpers for both tables; adds `config/embedding.example.json` and the
+  `numpy` dependency.
+
 ## [1.3.2] - 2026-07-31
 
 ### Added

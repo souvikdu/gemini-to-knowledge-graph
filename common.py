@@ -149,6 +149,84 @@ def load_config(require_api=False, require_limits=False, require_vault=False):
     return cfg
 
 
+EMBEDDING_PATH_KEYS = ["vault_dir"]
+EMBEDDING_API_KEYS = ["url", "model", "timeout", "batch_size"]
+EMBEDDING_LIMIT_KEYS = ["top_k", "min_similarity"]
+
+
+def load_embedding_config():
+    """Load config/embedding.json, validate required keys, resolve paths.
+
+    Mirrors load_config()'s pattern: same die()-with-fix-it-command style,
+    same "resolve relative paths against REPO_ROOT" behavior. Optional
+    sections (text_prep.strip_prefixes, node_sizing, obsidian.colors) fall
+    back to safe defaults when absent.
+    """
+    cfg_path = REPO_ROOT / "config" / "embedding.json"
+    example_path = REPO_ROOT / "config" / "embedding.example.json"
+
+    if not cfg_path.exists():
+        hint = (
+            "cp config/embedding.example.json config/embedding.json"
+            if example_path.exists()
+            else "create config/embedding.json — see config/embedding.example.json"
+        )
+        die(f"""✗ Missing config file: {cfg_path}
+
+  Fix:
+    cd config && {hint}
+
+  Then open config/embedding.json and check:
+    - api.url / api.model         → your local (or cloud) embedding endpoint
+    - top_k / min_similarity      → similarity-link thresholds
+    - paths.vault_dir             → where the Similarity Vault is written""")
+
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except json.JSONDecodeError as e:
+        die(
+            f"✗ config/embedding.json is not valid JSON: {e}\n\n"
+            f"  Fix the syntax (often a trailing comma or missing quote) and re-run."
+        )
+
+    missing_paths = [k for k in EMBEDDING_PATH_KEYS if k not in cfg.get("paths", {})]
+    if missing_paths:
+        die(
+            f"✗ config/embedding.json is missing paths.{{{', '.join(missing_paths)}}}\n\n"
+            f"  Compare against config/embedding.example.json and add the missing key(s)."
+        )
+
+    missing_api = [k for k in EMBEDDING_API_KEYS if k not in cfg.get("api", {})]
+    if missing_api:
+        die(
+            f"✗ config/embedding.json is missing api.{{{', '.join(missing_api)}}}\n\n"
+            f"  These control your embedding connection — see config/embedding.example.json."
+        )
+
+    missing_limits = [k for k in EMBEDDING_LIMIT_KEYS if k not in cfg]
+    if missing_limits:
+        die(
+            f"✗ config/embedding.json is missing top-level {{{', '.join(missing_limits)}}}"
+        )
+
+    # Optional sections with safe defaults
+    cfg.setdefault("text_prep", {}).setdefault("strip_prefixes", [])
+    cfg.setdefault("node_sizing", {}).setdefault("conversation", 8)
+    cfg.setdefault("obsidian", {}).setdefault("colors", {}).setdefault(
+        "conversation", {"a": 1, "rgb": 65280}
+    )
+
+    # Resolve relative paths to absolute
+    for key in EMBEDDING_PATH_KEYS:
+        raw = cfg["paths"][key]
+        if raw:
+            cfg["paths"][key] = str((REPO_ROOT / raw).resolve())
+
+    cfg["_repo_root"] = str(REPO_ROOT)
+    return cfg
+
+
 def load_topics(cfg):
     """Load categories + topic/category mappings from config/topics.json.
 
@@ -311,6 +389,21 @@ def yaml_str(value) -> str:
     return f'"{s}"'
 
 
+def pack_vector(vector: list[float]) -> bytes:
+    """Pack a list of floats into a compact float32 BLOB for SQLite storage."""
+    import numpy as np
+    return np.asarray(vector, dtype=np.float32).tobytes()
+
+
+def unpack_vector(blob: bytes, dim: int):
+    """Unpack a stored float32 BLOB back into a numpy array of length dim."""
+    import numpy as np
+    arr = np.frombuffer(blob, dtype=np.float32)
+    if len(arr) != dim:
+        raise ValueError(f"Vector length mismatch: expected {dim}, got {len(arr)}")
+    return arr
+
+
 def log(msg):
     ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
     print(f"[{ts}] {msg}")
@@ -363,6 +456,26 @@ def init_db(conn):
             first_seen_at   TEXT NOT NULL,
             last_seen_at    TEXT NOT NULL,
             chat_type       TEXT NOT NULL DEFAULT 'regular'
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS embeddings (
+            conversation_id TEXT PRIMARY KEY,
+            summary_hash    TEXT NOT NULL,
+            model           TEXT NOT NULL,
+            dim             INTEGER NOT NULL,
+            vector          BLOB NOT NULL,
+            embedded_at     TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS similarity_links (
+            conversation_id TEXT NOT NULL,
+            neighbor_id     TEXT NOT NULL,
+            score           REAL NOT NULL,
+            rank            INTEGER NOT NULL,
+            computed_at     TEXT NOT NULL,
+            PRIMARY KEY (conversation_id, neighbor_id)
         )
     """)
     conn.commit()
@@ -421,6 +534,114 @@ def delete_classifications(conn, cids: list, commit: bool = True) -> int:
     cur = conn.execute(
         f"DELETE FROM classifications WHERE conversation_id IN ({placeholders})",
         cids,
+    )
+    if commit:
+        conn.commit()
+    return cur.rowcount
+
+
+# ── Embeddings table helpers ────────────────────────────────────────────────
+
+
+def upsert_embedding(conn, record: dict):
+    """Insert or fully replace an embedding record by conversation_id.
+    Same pattern as upsert_classification — never accumulates duplicates."""
+    conn.execute("""
+        INSERT INTO embeddings
+            (conversation_id, summary_hash, model, dim, vector, embedded_at)
+        VALUES (:conversation_id, :summary_hash, :model, :dim, :vector, :embedded_at)
+        ON CONFLICT(conversation_id) DO UPDATE SET
+            summary_hash=excluded.summary_hash, model=excluded.model,
+            dim=excluded.dim, vector=excluded.vector,
+            embedded_at=excluded.embedded_at
+    """, {
+        "conversation_id": record["conversation_id"],
+        "summary_hash": record.get("summary_hash", ""),
+        "model": record.get("model", ""),
+        "dim": record.get("dim", 0),
+        "vector": record.get("vector", b""),
+        "embedded_at": record.get("embedded_at", ""),
+    })
+    conn.commit()
+
+
+def load_all_embeddings(conn) -> dict:
+    """Return {conversation_id: record_dict} with the vector as raw bytes.
+    Callers decide whether they need unpack_vector() — this never unpacks."""
+    out = {}
+    for row in conn.execute("SELECT * FROM embeddings"):
+        rec = dict(row)
+        out[rec["conversation_id"]] = rec
+    return out
+
+
+def delete_embeddings(conn, cids: list, commit: bool = True) -> int:
+    """Delete by conversation_id. Returns count actually deleted.
+
+    *commit* controls whether the change is committed immediately.
+    Pass ``commit=False`` when the caller manages its own transaction.
+    """
+    if not cids:
+        return 0
+    placeholders = ",".join("?" * len(cids))
+    cur = conn.execute(
+        f"DELETE FROM embeddings WHERE conversation_id IN ({placeholders})",
+        cids,
+    )
+    if commit:
+        conn.commit()
+    return cur.rowcount
+
+
+# ── Similarity links table helpers ──────────────────────────────────────────
+
+
+def replace_all_similarity_links(conn, rows: list[dict], commit: bool = True):
+    """Replace the entire similarity_links table with *rows*.
+
+    Deletes unconditionally, then inserts all rows. Both statements only
+    commit together if *commit* is True (same optionality pattern as the
+    other helpers)."""
+    conn.execute("DELETE FROM similarity_links")
+    if rows:
+        conn.executemany(
+            """INSERT INTO similarity_links
+                (conversation_id, neighbor_id, score, rank, computed_at)
+               VALUES (:conversation_id, :neighbor_id, :score, :rank, :computed_at)""",
+            rows,
+        )
+    if commit:
+        conn.commit()
+
+
+def load_all_similarity_links(conn) -> dict:
+    """Return {conversation_id: [link_dict, ...]} with each chat's list
+    sorted by rank ascending."""
+    out = {}
+    for row in conn.execute(
+        "SELECT * FROM similarity_links ORDER BY conversation_id, rank"
+    ):
+        rec = dict(row)
+        out.setdefault(rec["conversation_id"], []).append(rec)
+    return out
+
+
+def delete_similarity_links(conn, cids: list, commit: bool = True) -> int:
+    """Delete rows where the cid appears as either conversation_id or
+    neighbor_id. A pruned chat can still be listed as someone else's
+    neighbor even after its own row is gone — both must be cleaned up.
+
+    *commit* controls whether the change is committed immediately.
+    Pass ``commit=False`` when the caller manages its own transaction.
+    """
+    if not cids:
+        return 0
+    placeholders = ",".join("?" * len(cids))
+    cur = conn.execute(
+        f"DELETE FROM similarity_links"
+        f" WHERE conversation_id IN ({placeholders})"
+        f" OR neighbor_id IN ({placeholders})",
+        cids + cids,
     )
     if commit:
         conn.commit()
