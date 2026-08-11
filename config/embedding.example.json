@@ -3,7 +3,7 @@
     "url": "http://localhost:8081/v1/embeddings",
     "model": "qwen3-embedding:0.6b",
     "timeout": 60,
-    "batch_size": 32
+    "batch_size": 64
   },
   "top_k": 5,
   "min_similarity": 0.65,

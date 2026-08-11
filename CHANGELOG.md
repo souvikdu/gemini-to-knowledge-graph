@@ -8,6 +8,11 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`embed_chats.py` embedding stage** ([#32](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/32)):
+  embeds each classified chat's title+summary via an OpenAI-compatible
+  `/v1/embeddings` endpoint, stores float32 vectors in `chat_topics.db`,
+  and rebuilds top-K `similarity_links` each run (idempotent, model-aware,
+  `--recompute-links` to skip the API).
 - **Embedding graph foundation** ([#32](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/32)):
   `common.py` gains `embeddings` and `similarity_links` tables,
   `load_embedding_config()`, float32 vector pack/unpack helpers, and CRUD
