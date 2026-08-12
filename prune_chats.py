@@ -27,6 +27,8 @@ import sys
 from common import (
     add_ignored_conversations,
     delete_classifications,
+    delete_embeddings,
+    delete_similarity_links,
     die,
     exceeds_prune_safety_threshold,
     find_orphaned_cids,
@@ -106,11 +108,13 @@ def _do_prune(candidates_to_prune, *, conn, cfg, **kwargs):
     """Cascade-delete records and record them as ignored.
 
     1. Delete from ``classifications`` (no-op if never classified)
-    2. Delete from ``chats``
-    3. Add to ``ignored_conversations``
-    4. Delete stale vault notes
+    2. Delete from ``embeddings`` (no-op if never embedded)
+    3. Delete from ``similarity_links`` (as owner or as someone else's neighbor)
+    4. Delete from ``chats``
+    5. Add to ``ignored_conversations``
+    6. Delete stale vault notes
 
-    Steps 1-3 are wrapped in a single transaction: if the process is
+    Steps 1-5 are wrapped in a single transaction: if the process is
     killed mid-sequence the database is rolled back to its pre-prune
     state, preventing orphan records that would be undiscoverable on
     retry.
@@ -119,21 +123,31 @@ def _do_prune(candidates_to_prune, *, conn, cfg, **kwargs):
     if not cids:
         return
 
-    # Steps 1-3 in a single transaction
+    # Steps 1-5 in a single transaction
     with conn:
         # 1. Classifications
         deleted_cls = delete_classifications(conn, cids, commit=False)
         if deleted_cls:
             log(f"Deleted {deleted_cls} classification(s) from DB.")
 
-        # 2. Chats table
+        # 2. Embeddings
+        deleted_emb = delete_embeddings(conn, cids, commit=False)
+        if deleted_emb:
+            log(f"Deleted {deleted_emb} embedding(s) from DB.")
+
+        # 3. Similarity links (as owner or as someone else's neighbor)
+        deleted_links = delete_similarity_links(conn, cids, commit=False)
+        if deleted_links:
+            log(f"Deleted {deleted_links} similarity link(s) from DB.")
+
+        # 4. Chats table
         placeholders = ",".join("?" * len(cids))
         conn.execute(
             f"DELETE FROM chats WHERE conversation_id IN ({placeholders})",
             cids,
         )
 
-        # 3. Ignore list (so the extractor never re-fetches these)
+        # 5. Ignore list (so the extractor never re-fetches these)
         add_ignored_conversations(conn, cids, reason="deleted-by-user", commit=False)
 
     # 4. Vault notes — build state ONCE, not per candidate

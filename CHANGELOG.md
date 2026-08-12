@@ -18,6 +18,11 @@ versions follow [Semantic Versioning](https://semver.org/).
   `load_embedding_config()`, float32 vector pack/unpack helpers, and CRUD
   helpers for both tables; adds `config/embedding.example.json` and the
   `numpy` dependency.
+- **`prune_chats.py` cascade** ([#33](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/33)):
+  extends `_do_prune()` to also delete `embeddings` and `similarity_links`
+  rows for pruned conversations in the same atomic transaction as
+  classifications, chats, and ignore-list entries. Completes the embedding
+  feature's data-lifecycle coverage for v2.0.0.
 
 ## [1.3.2] - 2026-07-31
 
