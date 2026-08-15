@@ -4,7 +4,9 @@ For *why* the pipeline is shaped this way, see [DESIGN_NOTES.md](DESIGN_NOTES.md
 This doc covers *what's actually in the codebase*.
 
 ```
-Extract ──> [Review] ──> [Prune] ──> [Mask] ──> Classify ──> Vault
+Extract ──> [Review] ──> [Prune] ──> [Mask] ──> Classify ──> Vault (Obsidian_Vault/)
+                                                 │
+                                                 └─> [Embed ──> Similarity Vault]
              optional stages, in the order shown
 ```
 
@@ -12,16 +14,20 @@ Extract ──> [Review] ──> [Prune] ──> [Mask] ──> Classify ──>
 
 ## Shared utilities (`common.py`)
 
-All three stages draw on a shared library, `common.py`, so config-loading,
+All stages draw on a shared library, `common.py`, so config-loading,
 hashing, and database logic never drift between scripts:
 
 - **`load_config()`** — loads `config/config.json` with clear error messages
   for every missing or malformed key (`api.*`, `limits.*`, `node_sizing.*`,
   vault paths — each validated only by the stage that needs it)
+- **`load_embedding_config()`** — loads `config/embedding.json`, validating
+  embedding API parameters, top-K / similarity thresholds, and vault path
 - **`load_topics()`** — loads `config/topics.json` and returns lookup maps
   for normalizing/canonicalizing LLM output against the taxonomy
 - **`chat_fingerprint(chat)`** — SHA-256 hash of a chat's title and turn
   text, used to detect when a chat's content has changed
+- **`pack_vector(vector)` / `unpack_vector(blob, dim)`** — compact float32
+  serialization for storing high-dimensional embedding vectors in SQLite BLOB columns
 - **`canonicalize_topic(name)`** — folds casing/whitespace variants of a
   known topic back to one canonical spelling
 - **`dedup_case_insensitive(items)`** — deduplicates a list of strings
@@ -32,15 +38,24 @@ hashing, and database logic never drift between scripts:
   configurable maximum length (default 120 characters), appending `...` when
   cut. Used by review, classify, and vault stages to keep log output and
   manifest entries compact.
+- **`stamp_note_mtime(fpath, updated_at)`** — sets a markdown note's on-disk
+  mtime to match the chat's `updated_at` timestamp so filesystem sorting matches
+  conversation chronology
 - **`load_existing_vault_state(convos_dir)`** — scans an existing vault's
   `Conversations/` folder and returns a dict of `{cid: (notename, signature)}`
   for resume/rewrite-in-place detection
+- **`delete_vault_notes(vault_dir, cids)`** — deletes conversation notes for
+  pruned chats from any target vault's `Conversations/` directory
 - **`yaml_str(value)`** — safely quotes a string for YAML frontmatter
 - **`get_db_connection(cfg)` / `init_db(conn)`** — open (and create on first
   use) the SQLite database backing classifications, the `chats` metadata
-  table, and `ignored_conversations`
+  table, `ignored_conversations`, `embeddings`, and `similarity_links`
 - **`upsert_classification` / `load_all_classifications` / `delete_classifications`**
   — insert/replace, bulk-load, and delete rows in the `classifications` table
+- **`upsert_embedding` / `load_all_embeddings` / `delete_embeddings`**
+  — insert/replace, bulk-load, and delete rows in the `embeddings` table
+- **`replace_all_similarity_links` / `load_all_similarity_links` / `delete_similarity_links`**
+  — replace full edge set, load rank-ordered neighbors, and cascade-delete similarity links
 - **`add_ignored_conversations` / `load_ignored_conversations` / `remove_ignored_conversations`**
   — manage the `ignored_conversations` table: conversation IDs the extractor
   should skip on future runs (populated by `prune_chats.py`)
@@ -51,9 +66,9 @@ hashing, and database logic never drift between scripts:
 - **`sync_chats_to_db(conn, chats_dir)`** — scans `chats/*.json` using
   `os.scandir` + mtime pre-filtering, inserts or updates the `chats` table
   for any file whose `chat_fingerprint()` has changed. Called at the start
-  of `classify_chats.py`, `obsidian_layout.py`, `review_chats.py`, and
-  `prune_chats.py`'s normal prune flow, so every stage's view of the DB is
-  current before it acts.
+  of `classify_chats.py`, `obsidian_layout.py`, `embedding_layout.py`,
+  `review_chats.py`, and `prune_chats.py`'s normal prune flow, so every stage's
+  view of the DB is current before it acts.
 - **`find_orphaned_cids` / `exceeds_prune_safety_threshold`**
   — shared helpers for `prune_chats.py`: find chat IDs with no corresponding
   file on disk, and safety-check the deletion ratio against a configurable
@@ -173,6 +188,32 @@ Notable behaviors:
 
 ---
 
+## Similarity Vault stage (`embed_chats.py` & `embedding_layout.py`)
+
+An optional alternate lens on your conversation history. Instead of organizing
+chats under category and topic notes, it links conversation notes directly by
+semantic embedding similarity:
+
+```
+Conversation A (with summary & transcript)
+    └── [[Related Conversation B]] (0.84)
+    └── [[Related Conversation C]] (0.76)
+```
+
+- **`embed_chats.py`** — embeds each classified conversation's `title + summary`
+  using an OpenAI-compatible `/v1/embeddings` endpoint. Vectors are serialized as
+  float32 BLOBs in the `embeddings` table. A NumPy cosine similarity matrix
+  computes top-K neighbors above `min_similarity`, written to `similarity_links`.
+  Re-embedding is fully incremental via `summary_hash` change detection.
+- **`embedding_layout.py`** — renders `Similarity_Vault/Conversations/` notes.
+  Each note contains frontmatter, a `## Related Conversations` list with wikilinks
+  and similarity scores, and the formatted conversation transcript.
+- **Dynamic graph sizing** — rather than using static `node_sizing` tiers,
+  `Similarity_Vault/` leverages Obsidian's natural graph physics where highly-linked
+  hub conversations render larger automatically.
+
+---
+
 ## JSON contract
 
 Stages 2 and 3 read a standard chat shape from `chats/*.json`. The
@@ -214,11 +255,15 @@ gemini-to-knowledge-graph/
 │   └── gemini.py                   # Gemini Web extraction
 ├── review_chats.py                 # Optional — review manifest + sensitive-info scan
 ├── classify_chats.py               # Stage 2 — LLM classification
-├── obsidian_layout.py              # Stage 3 — Vault builder
-├── prune_chats.py                  # Cascade cleanup from DB + vault (orphans + review DEL marks)
+├── obsidian_layout.py              # Stage 3 — Category/Topic Vault builder
+├── embed_chats.py                  # Stage 4a (Optional) — LLM embedding & top-K similarity links
+├── embedding_layout.py             # Stage 4b (Optional) — Similarity Vault builder
+├── prune_chats.py                  # Cascade cleanup from DB + vaults (orphans + review DEL marks)
 ├── config/
 │   ├── config.example.json         # Template — copy to config.json
 │   ├── config.json                 # Your local config (gitignored)
+│   ├── embedding.example.json      # Template — copy to embedding.json
+│   ├── embedding.json              # Your embedding config (gitignored)
 │   ├── topics.example.json         # Template — copy to topics.json
 │   ├── topics.json                 # Category/topic taxonomy (gitignored)
 │   ├── sensitive_patterns.example.json  # Template — copy to sensitive_patterns.json
@@ -238,12 +283,16 @@ gemini-to-knowledge-graph/
 │   ├── DESIGN_NOTES.md             # Why the pipeline is shaped this way
 │   └── images/
 │       └── graph-preview.png
-├── Obsidian_Vault/                 # Generated Obsidian vault (gitignored)
+├── Obsidian_Vault/                 # Generated Hierarchical Obsidian vault (gitignored)
 │   ├── .obsidian/                  # Editor config, plugins (graph.json, custom-sort)
 │   ├── Concepts/
 │   │   ├── Categories/            # MOC notes per category
 │   │   └── Topics/                # MOC notes per topic
 │   ├── Conversations/             # Individual conversation notes
+│   └── sortspec.md
+├── Similarity_Vault/               # Optional Similarity Obsidian vault (gitignored)
+│   ├── .obsidian/                  # Editor config (graph.json)
+│   ├── Conversations/             # Notes with related-conversation links
 │   └── sortspec.md
 ├── tests/
 │   ├── conftest.py
@@ -253,7 +302,7 @@ gemini-to-knowledge-graph/
 │   ├── test_obsidian_layout.py
 │   ├── test_prune_chats.py
 │   └── test_review_chats.py
-├── chat_topics.db                 # SQLite: classifications + ignore list (gitignored)
+├── chat_topics.db                 # SQLite: classifications, embeddings, links, chats, ignores
 ├── .env.example
 ├── .gitignore
 ├── pytest.ini

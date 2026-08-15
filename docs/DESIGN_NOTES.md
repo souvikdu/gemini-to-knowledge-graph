@@ -321,6 +321,51 @@ as an equally large batch of orphans would be.
 
 ---
 
+## Similarity Graph & Embeddings (Similarity Vault)
+
+### Two separate vaults, not a mode toggle in a single vault
+An early proposal explored a config toggle within `obsidian_layout.py` to switch
+the primary vault between hierarchy mode and similarity mode. This was rejected in
+favor of two independent vaults: `Obsidian_Vault/` (hierarchical) and
+`Similarity_Vault/` (similarity-based).
+- **Zero coexistence conflict:** A single vault cannot cleanly serve two different
+  meanings of "what a wikilink represents" (parent taxonomy vs semantic neighbor)
+  without muddying graph navigation.
+- **Side-by-side exploration:** Users can keep both vaults open simultaneously in
+  Obsidian to explore their history through two distinct lenses without having to
+  wipe or regenerate either.
+
+### Embedding `title + summary`, not raw transcripts
+`embed_chats.py` embeds `truncate_title(title) + summary` instead of full turn-by-turn
+transcripts. Summaries generated during classification are already distilled and concise,
+comfortably fitting within the 256–512 token context limits of fast local embedding
+models (e.g. `qwen3-embedding:0.6b`). Embedding raw multi-turn transcripts would
+routinely overflow token budgets, add significant latency, and require complex chunking
+and pooling strategies for marginal link quality gain.
+
+### Brute-force pairwise NumPy similarity over vector databases
+Storing embeddings in SQLite as compact float32 BLOBs and computing pairwise cosine
+similarity using NumPy (`normalized @ normalized.T`) is deliberate:
+- At personal chat history scale (hundreds to low thousands of conversations),
+  computing pairwise similarities takes less than 5 milliseconds.
+- Introducing a dedicated vector database (Chroma, Qdrant, Milvus) or ANN indexing
+  library (FAISS, HNSW) would add heavyweight dependencies and external service
+  management for zero practical performance gain at this corpus size.
+
+### Directional Top-K with strict score threshold
+Similarity links are directional: note A listing note B in its top-K does not require
+note B to list note A. Requiring symmetric links would force weak matches into
+unrelated conversations. Applying a hard `min_similarity` cutoff ensures that chats
+with no genuinely close semantic neighbors have zero links rather than noisy connections.
+
+### Dynamic graph physics instead of artificial node size tiers
+Unlike the hierarchical vault—which requires `node_sizing` floor and ceiling bands to
+prevent popular topics from visually dwarfing categories—`Similarity_Vault/` lets
+Obsidian's natural force-directed graph physics size nodes dynamically: the more notes
+that reference a given conversation, the larger that hub conversation note renders.
+
+---
+
 ## Decisions considered and rejected
 
 Kept here specifically because the reasoning is worth preserving even though
@@ -334,23 +379,25 @@ note under the new name, or require tracking a rename history. Instead the
 filename is fixed at creation and located again by `conversation_id` from
 frontmatter, never re-derived from the current title.
 
-**Mid-point relationship notes**, proposed for a possible future
-similarity-graph mode. Rejected because force-directed layout quality
-degrades as the corpus grows, and a synthetic in-between node adds a layer
-of graph complexity without a real informational gain over a direct link.
+**Mid-point relationship notes**, proposed for the similarity graph. Rejected
+because force-directed layout quality degrades as the corpus grows, and a
+synthetic in-between node adds a layer of graph complexity without a real
+informational gain over a direct link.
 
-**Cluster hub notes**, proposed for the same feature. Rejected because
+**Cluster hub notes**, proposed for the similarity graph. Rejected because
 clustering loses pairwise precision (which two specific chats are actually
 similar) and introduces hub lifecycle questions — when a cluster splits,
 merges, or gets renamed — that are disproportionate to what a direct top-K
 nearest-neighbor link already achieves.
 
-**Dual-mode single vault with tag-based filtering**, also for the same
-feature. Rejected in favor of a plain config toggle between hierarchy mode
-and similarity mode. Running both in the same vault via tags caused
-coexistence problems; a clean either/or toggle doesn't ask Obsidian's graph
-view to represent two different definitions of "what a link means" at the
-same time.
+**Dual-mode single vault with tag-based filtering.** Rejected in favor of two
+separate vaults (`Obsidian_Vault/` and `Similarity_Vault/`). Running both link
+styles in the same vault caused coexistence problems; separate vaults allow both
+lenses to exist concurrently without interference.
+
+**Dedicated Vector Database / ANN libraries (Chroma, LanceDB, FAISS).** Rejected
+in favor of SQLite BLOB storage + vectorized NumPy matrix multiplication. Keeps
+dependencies minimal (`numpy` only) and avoids external service maintenance.
 
 ---
 
@@ -360,16 +407,9 @@ Kept separate on purpose — being explicit about what's designed versus what
 actually exists is one of the working principles behind this project, and
 folding roadmap ideas in as if they were shipped would work against that.
 
-- **Similarity graph mode.** The config toggle described above: direct
-  top-K wikilinks between conversations based on embedding similarity, no
-  hub notes, mutually exclusive with the current hierarchy mode (switching
-  requires `obsidian_layout.py --force`).
-- **`embed_chats.py`.** A standalone embedding pipeline reading from
-  `classifications.summary` rather than raw chat text — summaries are
-  model-curated and already fit within the token limits of small local
-  embedding models (typically 256–512 tokens), where raw conversation text
-  often wouldn't. Embeddings would live in a dedicated table keyed by a hash
-  of the summary text, resumable the same way every other stage is.
+- **Semantic search CLI.** A `search_chats.py` utility that embeds a user query
+  and prints the top matching conversations by cosine similarity against stored
+  vectors in `chat_topics.db`.
 - **Taxonomy promotion workflow.** A periodic pass to surface topics the
   classifier has coined that aren't yet in the seed taxonomy, so a
   genuinely recurring new topic gets promoted into `topics.json` as a

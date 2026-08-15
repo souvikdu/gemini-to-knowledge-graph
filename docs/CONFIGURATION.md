@@ -293,6 +293,13 @@ These values are written into each note's frontmatter as `node_size` and
 recomputed every run. You'll need a community plugin such as **Custom Node
 Size** for Obsidian to respect them.
 
+> **Similarity Vault (`config/embedding.json`):** does **not** use
+> `node_sizing`. It has a single tier of `type/conversation` notes, and
+> relies on Obsidian's built-in graph behavior — *"the more nodes that
+> reference a given node, the bigger it gets"* — so highly-connected
+> (hub) conversations render larger automatically. No `node_size`
+> frontmatter is written for Similarity Vault notes.
+
 ### Graph colors (`obsidian.colors`)
 
 | Tag | Key | Default rgb |
@@ -332,3 +339,32 @@ conversations newest-first the same way.
 > rather than this setting — it's a separate, fixed sort chosen to match
 > Gemini's own conversation sidebar ordering, not something this config
 > block controls. See [CLI.md](CLI.md#reviewing-extracted-chats).
+
+---
+
+## Embedding configuration (`config/embedding.json`)
+
+Used by `embed_chats.py` and `embedding_layout.py` to build the optional
+**Similarity Vault** (`Similarity_Vault/`), which links conversations directly
+by semantic similarity instead of taxonomy categories.
+
+### Setup
+
+Copy the template:
+
+```bash
+cp config/embedding.example.json config/embedding.json
+```
+
+See `config/embedding.example.json` for the full structure. The key settings are:
+
+- **`api.url` / `api.model`** — your OpenAI-compatible `/v1/embeddings` endpoint (e.g. Ollama with `qwen3-embedding:0.6b` or `nomic-embed-text`, or cloud providers).
+- **`api.batch_size`** — number of summaries to embed per request (set to `1` if your endpoint doesn't support batching).
+- **`top_k` / `min_similarity`** — maximum neighbors per chat and minimum cosine similarity score (defaults: `3` and `0.70`).
+- **`paths.vault_dir`** — target vault directory (defaults to `Similarity_Vault`).
+- **`obsidian`** — graph view physics and visual settings written directly to `.obsidian/graph.json`.
+
+### Tuning `min_similarity` and `top_k`
+
+- **`min_similarity`**: Start around `0.70`. If the graph feels too sparse, try lowering to `0.65`. If too many weakly related chats are linked, increase to `0.75`.
+- **`--recompute-links`**: After adjusting `top_k` or `min_similarity` in `config/embedding.json`, run `python embed_chats.py --recompute-links` to immediately update links without re-calling the embedding API.

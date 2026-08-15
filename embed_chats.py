@@ -124,7 +124,7 @@ def embed_batch(texts: list[str], api_cfg: dict, api_key: str):
             )
             r.raise_for_status()
             data = r.json()["data"]
-            data.sort(key=lambda d: d["index"])  # defensive — don't trust order
+            data.sort(key=lambda d: d.get("index", 0))  # defensive — don't trust order
             return [(d["embedding"], len(d["embedding"])) for d in data]
         except KeyboardInterrupt:
             raise  # never swallow Ctrl-C into a retry loop

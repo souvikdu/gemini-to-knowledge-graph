@@ -9,6 +9,7 @@ chats/*.json
 
 # Generated Obsidian vault
 Obsidian_Vault/
+Similarity_Vault/
 
 # Personal config / state (copy from *.example.json counterparts)
 config/config.json

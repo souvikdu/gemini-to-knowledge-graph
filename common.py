@@ -212,7 +212,6 @@ def load_embedding_config():
 
     # Optional sections with safe defaults
     cfg.setdefault("text_prep", {}).setdefault("strip_prefixes", [])
-    cfg.setdefault("node_sizing", {}).setdefault("conversation", 8)
     cfg.setdefault("obsidian", {}).setdefault("colors", {}).setdefault(
         "conversation", {"a": 1, "rgb": 65280}
     )
@@ -284,6 +283,24 @@ def make_safe_filename(name):
     return safe
 
 
+def stamp_note_mtime(fpath: str, updated_at: str) -> None:
+    """Set a note file's on-disk mtime to the chat's ``updated_at`` ISO
+    timestamp so filesystem ordering reflects conversation chronology
+
+    No-op if ``updated_at`` is empty or unparseable. Shared by both vault
+    builders (obsidian_layout.py and embedding_layout.py) — the extractor's
+    mtime stamping is a separate float-based path in extractors/base.py.
+    """
+    if not updated_at:
+        return
+    try:
+        dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        ts = dt.timestamp()
+        os.utime(fpath, (ts, ts))
+    except (ValueError, TypeError):
+        pass
+
+
 def truncate_title(title: str, max_len: int = 120) -> str:
     """Truncate title to max_len characters, appending '...' if cut."""
     if not title:
@@ -348,7 +365,7 @@ def load_existing_vault_state(convos_dir):
         try:
             with open(fpath, "r", encoding="utf-8") as f:
                 content = f.read()
-            m = re.search(r"^---\s*\n(.*?)\n---\s*\n## Topics", content, re.DOTALL)
+            m = re.search(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
             if not m:
                 continue
             yaml_block = m.group(1)
@@ -366,6 +383,35 @@ def load_existing_vault_state(convos_dir):
         except Exception:
             continue
     return state
+
+
+def delete_vault_notes(vault_dir: str, cids: list) -> int:
+    """Delete conversation notes for *cids* from a vault's ``Conversations/``
+    folder. Returns the number of notes actually removed.
+
+    Shared by ``prune_chats.py`` so both the main Obsidian vault and the
+    Similarity vault get cleaned from one code path. Safe to call when the
+    vault doesn't exist yet (returns 0) or when *vault_dir* is falsy.
+    """
+    if not vault_dir:
+        return 0
+    convos_dir = os.path.join(vault_dir, "Conversations")
+    state = load_existing_vault_state(convos_dir)
+    if not state:
+        return 0
+    removed = 0
+    for cid in cids:
+        entry = state.get(cid)
+        if entry is None:
+            continue
+        notename = entry[0]
+        fpath = os.path.join(convos_dir, f"{notename}.md")
+        try:
+            os.remove(fpath)
+            removed += 1
+        except OSError:
+            pass
+    return removed
 
 
 def chat_fingerprint(chat: dict) -> str:

@@ -11,7 +11,9 @@ You've had hundreds of conversations with AI — technical debugging at 2am, lea
 **gemini-to-knowledge-graph is a Gemini chat exporter** that pulls your conversation history out of Gemini's walled garden, classifies each conversation against a topic taxonomy using an LLM (local or cloud), and builds an Obsidian vault where everything you've explored is actually connected — category leads to topic leads to conversation.
 
 ```
-Extract ──> [Review] ──> [Prune] ──> [Mask] ──> Classify ──> Vault
+Extract ──> [Review] ──> [Prune] ──> [Mask] ──> Classify ──> Vault (Obsidian_Vault/)
+                                                 │
+                                                 └─> [Embed ──> Similarity Vault]
              optional stages, in the order shown
 ```
 
@@ -30,20 +32,21 @@ Every conversation lands as a markdown note with full text and frontmatter — n
 
 - **Cookie-based extraction** — no OAuth app registration, no API quota; paste your browser session cookies and go
 - **Fully resumable pipeline** — every stage (extract, classify, vault) picks up exactly where it left off; interrupt any script safely
-- **SQLite-backed state** — classifications, chat metadata, and the ignore list live in one queryable DB, synced incrementally via mtime + content-hash pre-filtering
+- **SQLite-backed state** — classifications, chat metadata, embeddings, similarity links, and the ignore list live in one queryable DB, synced incrementally via mtime + content-hash pre-filtering
 - **Smart staleness detection** — catches not just text changes but classification-outcome transitions too (unclassified → classified, error → ok), so nothing silently goes stale
-- **Safe, reversible pruning** — orphan detection with a full cascade delete and a safety threshold that blocks accidental mass-deletion
+- **Safe, reversible pruning** — orphan detection with a full cascade delete across DB, JSON files, and vaults with a safety threshold that blocks accidental mass-deletion
 - **Editable review manifest with sensitive-info flagging and masking** — a plain-CSV pass before classification lets you skim titles, mark chats `KEEP`/`DEL`, and get automatic regex + keyword flags, plus optional in-place redaction of matched content for chats you want to keep
 - **Human-reviewable at every stage** — chats land as plain JSON you can open, edit, or delete before anything is sent to an LLM or written to the vault
 - **Local-first, cloud-optional** — works with any OpenAI-compatible endpoint, so your history never has to leave your machine unless you choose otherwise
 - **Strict three-tier graph** — Category → Topic → Conversation, enforced consistently, so the graph view stays legible instead of turning into a hairball
-- **Source-agnostic architecture** — the extractor is a swappable module; adding ChatGPT or Claude history later won't touch the classify/vault stages
+- **Optional semantic similarity graph** — embed conversation summaries and precompute top-K similarity links for an alternative, flat `Similarity_Vault/`
+- **Source-agnostic architecture** — the extractor is a swappable module; adding ChatGPT or Claude history later won't touch downstream stages
 
 ---
 
 ## Local or cloud?
 
-The classifier needs any endpoint that speaks the OpenAI-style `/v1/chat/completions` format — local servers (llama.cpp, Ollama) or cloud providers (OpenAI, Groq, Together, OpenRouter, Claude via its OpenAI-compatible endpoint, etc.) all work.
+The classifier and embedding stages need endpoints that speak OpenAI-style `/v1/chat/completions` and `/v1/embeddings` formats — local servers (llama.cpp, Ollama) or cloud providers (OpenAI, Groq, Together, OpenRouter, Claude via its OpenAI-compatible endpoint, etc.) all work.
 
 **Privacy note:** this tool sends full conversation text to whichever endpoint you configure. If that matters more than raw speed/quality, run local — nothing leaves your machine. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md#local-or-cloud) for provider notes and context-window setup.
 
@@ -101,6 +104,18 @@ Then open `Obsidian_Vault/` in Obsidian and explore the graph view.
 
 > Want to review chats — skim titles, flag sensitive content, mark chats for deletion, or redact sensitive info in chats you'd rather keep? The review stage can be run at any time, but it's recommended before anything is classified or vaulted. See [docs/CLI.md](docs/CLI.md#reviewing-extracted-chats).
 
+### Optional: Similarity-based graph (Similarity Vault)
+
+Prefer connecting chats by semantic similarity instead of taxonomy categories? After running `classify_chats.py`:
+
+```bash
+cp config/embedding.example.json config/embedding.json
+python embed_chats.py        # Stage 4a — embed summaries & compute top-K links
+python embedding_layout.py   # Stage 4b — build Similarity_Vault/
+```
+
+Open `Similarity_Vault/` in Obsidian to see conversations connected directly via `Related Conversations` links. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md#embedding-configuration-configembeddingjson) for details.
+
 ---
 
 ## Troubleshooting
@@ -112,15 +127,15 @@ Then open `Obsidian_Vault/` in Obsidian and explore the graph view.
 | `Connection failed` / cookies expired | Re-login to gemini.google.com and update `.env` |
 | `API not reachable` (Stage 2) | Your LLM server isn't running, or `api.url` is wrong |
 
-More edge cases (topic collisions, stuck classifications, un-pruning, review manifest issues) are covered in [docs/CLI.md](docs/CLI.md#troubleshooting).
+More edge cases (topic collisions, stuck classifications, un-pruning, review manifest issues, embedding setup) are covered in [docs/CLI.md](docs/CLI.md#troubleshooting).
 
 ---
 
 ## Further reading
 
-- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — full `api` / `node_sizing` / `obsidian` config reference, context-window tuning, prompt customization, sensitive-pattern scanning setup
-- [docs/CLI.md](docs/CLI.md) — every flag for every stage, resume behavior, the review and pruning workflow
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — `common.py` reference, the JSON contract, project structure
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — full `api` / `node_sizing` / `obsidian` / embedding config reference, context-window tuning, prompt customization, sensitive-pattern scanning setup
+- [docs/CLI.md](docs/CLI.md) — every flag for every stage (including embedding & similarity vault), resume behavior, the review and pruning workflow
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — `common.py` reference, the JSON contract, project structure, similarity graph architecture
 - [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md) — why the pipeline is shaped this way, and what was deliberately not built
 
 ---

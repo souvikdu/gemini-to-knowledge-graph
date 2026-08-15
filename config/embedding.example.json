@@ -5,18 +5,23 @@
     "timeout": 60,
     "batch_size": 64
   },
-  "top_k": 5,
-  "min_similarity": 0.65,
+  "top_k": 3,
+  "min_similarity": 0.7,
   "text_prep": {
     "strip_prefixes": ["This conversation", "The user"]
   },
   "paths": {
     "vault_dir": "Similarity_Vault"
   },
-  "node_sizing": {
-    "conversation": 8
-  },
   "obsidian": {
+    "nodeSizeMultiplier": 1,
+    "lineSizeMultiplier": 0.3,
+    "repelStrength": 10,
+    "linkStrength": 1,
+    "linkDistance": 30,
+    "centerStrength": 0.5,
+    "scale": 1,
+    "textFadeMultiplier": 0,
     "colors": {
       "conversation": { "a": 1, "rgb": 6737151 }
     }
