@@ -14,7 +14,9 @@ This repo extracts a user's Gemini Web chat history and turns it into an
 Obsidian vault. Stages, run in this order:
 
 ```
-Extract ──> [Review] ──> [Prune] ──> [Mask] ──> Classify ──> Vault
+Extract ──> [Review] ──> [Prune] ──> [Mask] ──> Classify ──> Vault (Obsidian_Vault/)
+                                                 │
+                                                 └─> [Embed ──> Similarity Vault]
                  optional stages, in the order shown
 ```
 
@@ -24,7 +26,7 @@ Extract ──> [Review] ──> [Prune] ──> [Mask] ──> Classify ──>
   skimming titles and flagging sensitive content, and marking chats for
   deletion, before anything is sent to an LLM or written to a vault.
 - **Prune** (`prune_chats.py`) — deletes chats marked `DEL` in review (or
-  removed by hand) from disk, the DB, classifications, and the vault.
+  removed by hand) from disk, the DB, classifications, and vaults.
 - **Mask** (`review_chats.py --mask-sensitive`, optional) — redacts
   sensitive spans in chats the user reviewed and chose to *keep*, instead
   of forcing an all-or-nothing keep/delete choice. Inspecting what actually
@@ -32,8 +34,12 @@ Extract ──> [Review] ──> [Prune] ──> [Mask] ──> Classify ──>
   redact.
 - **Classify** (`classify_chats.py`) — sends each chat to a configured LLM
   (local or cloud) to assign categories/topics, stored in a local SQLite DB.
-- **Vault** (`obsidian_layout.py`) — builds the Obsidian vault from
-  classified chats.
+- **Vault** (`obsidian_layout.py`) — builds the hierarchical Obsidian vault
+  from classified chats (`Category → Topic → Conversation`).
+- **Embed & Similarity Vault** (`embed_chats.py` & `embedding_layout.py`,
+  optional) — embeds conversation summaries, precomputes similarity links,
+  and builds an independent flat vault (`Similarity_Vault/`) linking
+  conversations by semantic similarity.
 
 All paths, the LLM endpoint, and the taxonomy are user-configured in
 `config/`.
@@ -354,6 +360,43 @@ mention it after, not blended together.
 
 If they do want to tweak config, `obsidian_layout.py` (no `--force`) picks
 up the changes on the next run.
+
+**Informing the user about the optional Similarity Graph:**
+At the end of this message (after the plugins and vault setup), briefly inform
+the user that this feature exists if they ever want an alternate view:
+
+> If you ever want an alternative, flat graph linking your conversations
+> directly by semantic similarity rather than taxonomy categories, this repo
+> also supports generating a separate `Similarity_Vault/`. Just let me know
+> if you ever want to set that up!
+
+---
+
+### When user explicitly requests the Similarity Graph (Optional Stage 4)
+
+**Never proactively suggest or hand off these commands during normal workflow.**
+The Category $\rightarrow$ Topic vault is the primary product. Only guide the
+user through this stage if they explicitly ask to build the similarity graph or
+use embeddings:
+
+1. Check whether `config/embedding.json` exists. If not, offer to set it up:
+   ```bash
+   cp config/embedding.example.json config/embedding.json
+   ```
+   Remind them to check `api.url` and `api.model` (e.g. `qwen3-embedding:0.6b`
+   in Ollama or a local `llama-server --embedding`).
+2. Hand off embedding & link calculation:
+   ```bash
+   python embed_chats.py
+   ```
+   (Suggest `python embed_chats.py 20` if they want to test a small batch first).
+3. Hand off the Similarity Vault builder:
+   ```bash
+   python embedding_layout.py
+   ```
+4. Tell the user to open `Similarity_Vault/` in Obsidian. Notes in this vault
+   contain `## Related Conversations` wikilinks with similarity scores.
+
 
 ---
 

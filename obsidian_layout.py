@@ -29,6 +29,7 @@ from common import (
     load_topics,
     log,
     make_safe_filename,
+    stamp_note_mtime,
     sync_chats_to_db,
     truncate_title,
     yaml_str,
@@ -487,16 +488,12 @@ node_size: {conv_size}
         ) as cf:
             cf.write(content)
 
-        # Stamp .md mtime to match the chat's updated_at timestamp from the
-        # JSON data so filesystem ordering reflects conversation chronology.
-        ts_str = chat.get("updated_at", "")
-        if ts_str:
-            try:
-                dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-                chat_ts = dt.timestamp()
-                os.utime(os.path.join(convos_dir, f"{notename}.md"), (chat_ts, chat_ts))
-            except (ValueError, TypeError):
-                pass
+        # Stamp mtime to match the chat's updated_at so filesystem ordering
+        # reflects conversation chronology.
+        stamp_note_mtime(
+            os.path.join(convos_dir, f"{notename}.md"),
+            chat.get("updated_at", ""),
+        )
 
         if idx % 100 == 0:
             log(f"  ... {idx}/{len(files)}")

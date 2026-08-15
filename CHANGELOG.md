@@ -6,8 +6,15 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-15
+
 ### Added
 
+- **`embedding_layout.py` Similarity Vault builder** ([#32](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/32)):
+  builds an alternative, flat Obsidian vault (`Similarity_Vault/`) with
+  direct `Related Conversations` links scored by semantic similarity,
+  dynamic Obsidian graph view sizing, custom sorting, and smart note
+  signatures based on summary hashes, links, and turns.
 - **`embed_chats.py` embedding stage** ([#32](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/32)):
   embeds each classified chat's title+summary via an OpenAI-compatible
   `/v1/embeddings` endpoint, stores float32 vectors in `chat_topics.db`,
@@ -18,11 +25,34 @@ versions follow [Semantic Versioning](https://semver.org/).
   `load_embedding_config()`, float32 vector pack/unpack helpers, and CRUD
   helpers for both tables; adds `config/embedding.example.json` and the
   `numpy` dependency.
-- **`prune_chats.py` cascade** ([#33](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/33)):
+- **`prune_chats.py` cascade** ([#32](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/32)):
   extends `_do_prune()` to also delete `embeddings` and `similarity_links`
   rows for pruned conversations in the same atomic transaction as
-  classifications, chats, and ignore-list entries. Completes the embedding
-  feature's data-lifecycle coverage for v2.0.0.
+  classifications, chats, and ignore-list entries, and cleans up notes from
+  both `Obsidian_Vault/` and `Similarity_Vault/`.
+
+### Fixed
+
+- **`embedding_layout.py` None-turn-text crash** ([#32](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/32)):
+  `similarity_note_signature` and `render_conversation_block` now coerce
+  `None` turn text/role to empty string, preventing `TypeError` on chats
+  with null text turns.
+- **`embedding_layout.py` filename collision** ([#32](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/32)):
+  Pass A now pre-populates `used_filenames` from existing vault state, so a
+  new chat with a duplicate title can no longer overwrite an unchanged note.
+- **`embedding_layout.py` Windows CRLF** ([#32](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/32)):
+  notes are now written with `newline="\n"` for deterministic LF line
+  endings, matching the rest of the vault.
+- **`embed_chats.py` embedding `index` assumption** ([#32](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/32)):
+  response sorting now uses `d.get("index", 0)`, tolerating providers that
+  omit the `index` field.
+- **`common.py` narrow `except` in `delete_vault_notes`** ([#32](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/32)):
+  now catches `OSError` (covers permission/locked files) instead of only
+  `FileNotFoundError`.
+- **`prune_chats.py` spurious error on missing `embedding.json`** ([#32](https://github.com/souvikdu/gemini-to-knowledge-graph/issues/32)):
+  checks for the config file before calling `load_embedding_config()`,
+  avoiding a misleading `✗` message (and a potential `UnicodeEncodeError`
+  on cp1252 consoles) for users without a Similarity Vault.
 
 ## [1.3.2] - 2026-07-31
 

@@ -25,6 +25,7 @@ import os
 import sys
 
 from common import (
+    REPO_ROOT,
     add_ignored_conversations,
     delete_classifications,
     delete_embeddings,
@@ -34,7 +35,8 @@ from common import (
     find_orphaned_cids,
     get_db_connection,
     load_config,
-    load_existing_vault_state,
+    load_embedding_config,
+    delete_vault_notes,
     log,
     remove_ignored_conversations,
     sync_chats_to_db,
@@ -84,26 +86,6 @@ def validate_review_delete_file(cid: str, conn, chats_dir: str) -> str | None:
     return candidate_path
 
 
-def _delete_vault_note(cid, convos_dir, state):
-    """Delete a conversation note from the vault if it exists, matching by
-    ``conversation_id`` in YAML frontmatter.
-
-    *state* is a pre-built ``{cid: (notename, signature)}`` dict from
-    ``load_existing_vault_state()`` — pass it in rather than rebuilding
-    per orphan (O(N) per call vs O(N²)).
-    """
-    entry = state.get(cid)
-    if entry is None:
-        return False
-    notename = entry[0]
-    fpath = os.path.join(convos_dir, f"{notename}.md")
-    try:
-        os.remove(fpath)
-        return True
-    except Exception:
-        return False
-
-
 def _do_prune(candidates_to_prune, *, conn, cfg, **kwargs):
     """Cascade-delete records and record them as ignored.
 
@@ -112,7 +94,7 @@ def _do_prune(candidates_to_prune, *, conn, cfg, **kwargs):
     3. Delete from ``similarity_links`` (as owner or as someone else's neighbor)
     4. Delete from ``chats``
     5. Add to ``ignored_conversations``
-    6. Delete stale vault notes
+    6. Delete stale vault notes (main Obsidian vault + Similarity vault)
 
     Steps 1-5 are wrapped in a single transaction: if the process is
     killed mid-sequence the database is rolled back to its pre-prune
@@ -150,21 +132,41 @@ def _do_prune(candidates_to_prune, *, conn, cfg, **kwargs):
         # 5. Ignore list (so the extractor never re-fetches these)
         add_ignored_conversations(conn, cids, reason="deleted-by-user", commit=False)
 
-    # 4. Vault notes — build state ONCE, not per candidate
-    vault_dir = cfg["paths"].get("vault_dir")
+    # 4. Vault notes — clean both the main Obsidian vault and the
+    #    Similarity vault (each has its own Conversations/ folder).
     removed_vault = 0
-    if vault_dir:
-        convos_dir = os.path.join(vault_dir, "Conversations")
-        state = load_existing_vault_state(convos_dir)
-        for cid in cids:
-            if _delete_vault_note(cid, convos_dir, state):
-                removed_vault += 1
+    main_vault_dir = cfg["paths"].get("vault_dir")
+    if main_vault_dir:
+        removed_vault += delete_vault_notes(main_vault_dir, cids)
+    if (REPO_ROOT / "config" / "embedding.json").exists():
+        embed_cfg = load_embedding_config()
+        sim_vault_dir = embed_cfg["paths"].get("vault_dir")
+        if sim_vault_dir:
+            removed_vault += delete_vault_notes(sim_vault_dir, cids)
+    else:
+        # Similarity vault not configured — nothing to clean.
+        log("Skipping Similarity Vault cleanup (config/embedding.json not found).")
     if removed_vault:
         log(f"Deleted {removed_vault} vault note(s).")
 
     log(f"Pruned {len(cids)} conversation(s) — IDs added to ignore list.")
     log("Hub notes (Topic/Category) are not touched by this script —")
     log("they refresh automatically on the next 'python obsidian_layout.py' run.")
+
+    # Pruning deletes embeddings + similarity_links for the pruned chats
+    # but does NOT recompute links for survivors. A survivor that lost a
+    # neighbor may now sit below top-K; recomputing promotes the next
+    # related chat into its top-K. Note files for both vaults ARE cleaned
+    # by this script (see delete_vault_notes), so no manual file removal
+    # is needed — only the link table needs a recompute.
+    if deleted_emb or deleted_links:
+        log("")
+        log("Next steps to refresh the Similarity Vault:")
+        log("  python embed_chats.py --recompute-links")
+        log("    → rebuilds similarity_links from remaining embeddings,")
+        log("      promoting the next-related chat into each survivor's top-K")
+        log("  python embedding_layout.py")
+        log("    → re-renders notes with the updated links")
 
 
 def list_ignored(conn):
