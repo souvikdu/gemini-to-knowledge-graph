@@ -36,7 +36,6 @@ from common import (
     get_db_connection,
     load_config,
     load_embedding_config,
-    load_existing_vault_state,
     delete_vault_notes,
     log,
     remove_ignored_conversations,
