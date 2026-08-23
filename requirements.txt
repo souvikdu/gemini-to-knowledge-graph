@@ -4,7 +4,7 @@ python-dotenv>=1.2.2
 
 # Gemini chat extraction
 gemini_webapi>=0.3.9
-orjson>=3.11.9
+orjson>=3.12.0
 
 # Embedding graph
 numpy>=1.26.0
