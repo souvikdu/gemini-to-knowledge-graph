@@ -3,7 +3,7 @@ requests>=2.34.2
 python-dotenv>=1.2.2
 
 # Gemini chat extraction
-gemini_webapi>=0.3.9
+gemini_webapi>=2.1.0
 orjson>=3.11.9
 
 # Embedding graph
