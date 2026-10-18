@@ -7,4 +7,4 @@ gemini_webapi>=2.1.1
 orjson>=3.11.9
 
 # Embedding graph
-numpy>=2.5.3
+numpy>=2.5.4
